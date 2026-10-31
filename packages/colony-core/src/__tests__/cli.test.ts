@@ -173,7 +173,11 @@ test('memory add and search round-trip through the file store; completed work is
   const id = (await run('task', 'add', 'Parse widgets', 'parse the widget feed', '--role', 'engineer')).out.task.id;
   await run('done', id, '--result', 'widget parser implemented');
   const learned = await run('memory', 'search', 'Parse widgets: parse the widget feed');
-  assert.ok(learned.out.results.some((r: any) => /widget parser implemented/.test(r.text)));
+  const entry = learned.out.results.find((r: any) => /widget parser implemented/.test(r.text));
+  assert.ok(entry);
+  // The colony only records what the host reported; it must not label that "verified".
+  assert.match(entry.text, /Reported Solution Strategy/);
+  assert.doesNotMatch(entry.text, /Verified/);
 });
 
 const rulesPath = (name: string, file = '') => path.join(root, name, '.colony', 'rules', file);

@@ -11,7 +11,8 @@ export interface ReasoningPattern {
 
 /**
  * ReasoningBank - Long-term associative memory for successful problem-solving trajectories
- * Agents learn by indexing verified successes and retrieving relevant solutions when facing similar challenges.
+ * Agents learn by indexing reported successes and retrieving relevant solutions when facing similar challenges.
+ * The colony does not verify a result itself; it records what the executing host reported.
  */
 export class ReasoningBank {
   private codex: VectorCodex;
@@ -22,7 +23,7 @@ export class ReasoningBank {
   }
 
   /**
-   * Record a verified successful execution pattern into the Reasoning Bank
+   * Record a reported successful execution pattern into the Reasoning Bank
    */
   public async recordPattern(pattern: {
     problem: string;
@@ -42,7 +43,7 @@ export class ReasoningBank {
       createdAt: Date.now(),
     };
 
-    const documentText = `[ROLE: ${pattern.role}] Problem: ${pattern.problem}\nVerified Solution Strategy: ${pattern.solution}`;
+    const documentText = `[ROLE: ${pattern.role}] Problem: ${pattern.problem}\nReported Solution Strategy:${pattern.solution}`;
 
     await this.codex.storeDocuments([
       {
