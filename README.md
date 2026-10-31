@@ -38,6 +38,8 @@ pnpm build
 pnpm test
 ```
 
+Hostnak adható indítóutasítás: [START_HERE.md](START_HERE.md).
+
 ### Munkamenet: boot, majd munka
 
 Minden parancs JSON-t ír ki. A `--dir <mappa>` a projektmappa (alapértelmezés: az aktuális mappa).
@@ -93,7 +95,7 @@ v3/, plugins/, ruflo/, plugin/   régi Ruflo-kód (átírandó vagy kivezetendő
 ## Ismert hiányok
 
 - A `colony-core` tesztjei (`pnpm test`, 30 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyWorker`, az LLM-szolgáltatók, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
-- A szabályok csak kötelező készletből állnak. Opcionális, feladathoz kötött szabálybetöltés (mint a Kristában az útválasztó) még nincs.
+- A szabályok csak kötelező készletből állnak, és mind a bootban töltődnek be. Feladathoz kötött szabálybetöltésre (útválasztóra) szándékosan nincs szükség.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
 - A beépített tagok (6 szerep) fixek, a CLI-ből nem lehet újat felvenni.
 - A `plant.md` V. és VI. fázisa nincs leírva, és nincs bennük kész kód.
