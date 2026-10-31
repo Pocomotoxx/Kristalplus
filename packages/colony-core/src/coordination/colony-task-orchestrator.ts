@@ -121,6 +121,20 @@ export class ColonyTaskOrchestrator {
     return true;
   }
 
+  /** Move an open task to another member (steal or handoff). The task keeps its status. */
+  public async reassignTask(taskId: string, newAgentId: string): Promise<void> {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Task '${taskId}' not found`);
+    if (!['assigned', 'in_progress', 'review', 'consensus'].includes(task.status)) {
+      throw new Error(`Task '${taskId}' is ${task.status}, not open`);
+    }
+    const previous = task.assignedAgentId;
+    if (previous) this.registry.completeTask(previous, taskId);
+    task.assignedAgentId = newAgentId;
+    this.registry.assignTask(newAgentId, taskId);
+    await this.messageBus.publish('task:reassigned', 'orchestrator', { taskId, from: previous, to: newAgentId });
+  }
+
   public async updateTaskProgress(
     taskId: string,
     agentId: string,

@@ -7,6 +7,7 @@ import { VectorCodex } from '../memory/vector-codex.js';
 import { FileVectorStore } from '../memory/file-vector-store.js';
 import { BUILTIN_AGENT_PROFILES } from '../agents/agent-profiles.js';
 import type { SerializedProposal } from '../consensus/consensus-engine.js';
+import type { Claim } from '../coordination/claim-ledger.js';
 import type { ColonyMember, ColonyTask } from '../types.js';
 import { DEFAULT_MANIFEST, DEFAULT_RULES } from './default-rules.js';
 
@@ -24,6 +25,8 @@ interface LedgerFile {
   members: ColonyMember[];
   tasks: ColonyTask[];
   proposals: SerializedProposal[];
+  /** Absent in ledgers written before claims existed. */
+  claims?: Claim[];
 }
 
 export interface BootRecord {
@@ -160,6 +163,10 @@ export class ColonySession {
       hub.registry.restore(ledger.members);
       hub.orchestrator.restore(ledger.tasks);
       hub.consensus.restore(ledger.proposals);
+      if (ledger.claims !== undefined) {
+        if (!Array.isArray(ledger.claims)) throw new Error(`${LEDGER_FILE} has an unsupported shape`);
+        hub.claims.restore(ledger.claims);
+      }
     }
 
     const memoryText = await readIfExists(path.join(stateDir, MEMORY_FILE));
@@ -176,6 +183,7 @@ export class ColonySession {
       members: this.hub.registry.snapshot(),
       tasks: this.hub.orchestrator.snapshot(),
       proposals: this.hub.consensus.snapshot(),
+      claims: this.hub.claims.snapshot(),
     };
     await fs.mkdir(this.stateDir, { recursive: true });
     await fs.writeFile(path.join(this.stateDir, LEDGER_FILE), JSON.stringify(ledger, null, 2), 'utf-8');

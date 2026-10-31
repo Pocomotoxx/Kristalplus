@@ -69,6 +69,26 @@ Amit **nem** vettem át:
 
 A `legacy/ruflo/v3/@claude-flow/swarm` mappa ezért még nem törölhető.
 
+### `claims` (részben átvéve)
+
+Átírva: `coordination/claim-ledger.ts`. Az idő paraméter, nincs időzítő, véletlen vagy eseménykibocsátó. A foglalás kulcsa a feladat azonosítója, így nincs véletlen azonosító. Olvasott forrás: `domain/types.ts`, `domain/rules.ts`. A `claim-service.ts`, `work-stealing-service.ts` és `load-balancer.ts` fájlokat **nem** olvastam át; a szabályokat a `rules.ts` alapján vettem át.
+
+| Régi elem | Mi lett belőle |
+|---|---|
+| Állapotok (`active`, `blocked`, `pending_handoff`, `stealable`, ...) | `active`, `blocked`, `handoff_pending`, `stealable`, `closed` (a lezárás eredménye: `completed`, `failed`, `released`). |
+| `canMarkAsStealable`: elavulás 30 perc, blokkolás 60 perc | `sweep(now)`, ugyanazokkal az alapértékekkel. |
+| `canStealClaim`, türelmi idő | `steal(...)`: állapot, türelmi idő (10 perc), saját foglalás tilos, a jelentkező kapacitása. |
+| `canInitiateHandoff`, `canAcceptHandoff`, `canRejectHandoff` | `requestHandoff`, `acceptHandoff`, `rejectHandoff`, ugyanazokkal a jogosultságokkal. |
+
+Eltérések a régi kódtól, szándékosan:
+- **Nincs előrehaladás-védelem.** A régi szabály a 75% fölötti foglalást nem engedte átvenni. Egy elhalt gazdagép-munkamenet 80%-nál így örökre blokkolná a feladatot. Az átvétel rögzíti a korábbi előrehaladást (`previousProgress`), az új gazda ebből látja, hol tartott a munka.
+- **Nincs vitatási ablak és királynő/ember döntőbíró.** Az átvétel végleges. Ha szavazás kell, ott a konszenzusmotor.
+- **Nincs terheléskiegyenlítés** (`load-balancer.ts`, `rebalance`). A kapacitás a tagok `maxConcurrentTasks` értéke.
+- **Nincs szövetséges (federated) tár, HLC és vektoridő** (`infrastructure/`): egyetlen főkönyv van.
+- **Nincs MCP- és CLI-réteg** (`api/`): a Colony saját CLI-je van.
+
+A `legacy/ruflo/v3/@claude-flow/claims` mappa ezért még nem törölhető.
+
 ## Teendők, ha elfogadod
 
 1. A **C** lista törlése egy külön commitban (a git-előzményben megmarad).

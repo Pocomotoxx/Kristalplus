@@ -4,6 +4,7 @@ import { BUILTIN_AGENT_PROFILES } from '../agents/agent-profiles.js';
 import type { AgentRole, ColonyMember, ColonyTask, TaskPriority } from '../types.js';
 import { ColonySession, loadRules, resolveRevision } from './session.js';
 import { QUORUM_STRATEGIES, QuorumStrategy } from '../consensus/strategies.js';
+import { ClaimError } from '../coordination/claim-ledger.js';
 import { buildTopology, isFullyConnected, shortestPath, TOPOLOGY_TYPES, TopologyType } from '../topology.js';
 
 export interface CommandResult {
@@ -32,6 +33,12 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   fail <taskId> --error <text>            mark a task failed
   propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous] [--timeout-min M] [--data text]
   topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
+  claim list | sweep                      who holds which task; sweep marks stale or long-blocked claims stealable
+  claim heartbeat <taskId> --as <member>  [--progress 0..100]   show life; takes a stealable claim back
+  claim block <taskId> --as <member> --reason <text> | claim unblock <taskId> --as <member>
+  claim release <taskId> --as <member>    give the task up (anyone may take it over at once)
+  claim steal <taskId> --as <member>      take over a stealable claim (after its grace period)
+  claim handoff <taskId> --as <member> --to <member> --reason <text> | claim accept|reject <taskId> --as <member>
   vote <proposalId> --as <member> (--approve|--reject) --reason <text> [--confidence 0..1]
   memory add <text>                       [--ns NAMESPACE]
   memory search <query>                   [--k N] [--ns NAMESPACE]
@@ -94,6 +101,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         error: { type: 'string' },
         reason: { type: 'string' },
         confidence: { type: 'string' },
+        progress: { type: 'string' },
         approve: { type: 'boolean' },
         reject: { type: 'boolean' },
         ns: { type: 'string' },
@@ -220,6 +228,9 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       }
       const member = hub.registry.getMember(task.assignedAgentId!)!;
       if (task.status === 'assigned') await hub.orchestrator.updateTaskProgress(task.id, member.id, 'in_progress');
+      const open = hub.claims.get(task.id);
+      if (open && open.status !== 'closed' && open.holderId === member.id) hub.claims.heartbeat(task.id, member.id, Date.now());
+      else if (!open || open.status === 'closed') hub.claims.claim(task.id, member.id, Date.now());
       const profile = Object.values(BUILTIN_AGENT_PROFILES).find((p) => p.id === member.metadata?.profileId);
       const memory = await hub.codex.search(`${task.title} ${task.description}`, { topK: 3, minScore: 0.1 });
       await session.save();
@@ -242,6 +253,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       if (command === 'fail') {
         if (!values.error?.trim()) throw new CliError('--error <text> is required');
         await hub.orchestrator.failTask(task.id, agentId, values.error);
+        hub.claims.close(task.id, 'failed', agentId, Date.now());
         await session.save();
         return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!) });
       }
@@ -252,9 +264,114 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       }
       const before = new Map(hub.orchestrator.getAllTasks().map((t) => [t.id, t.status]));
       await hub.orchestrator.completeTask(task.id, agentId, values.result);
+      hub.claims.close(task.id, 'completed', agentId, Date.now());
       const unblocked = hub.orchestrator.getAllTasks().filter((t) => before.get(t.id) === 'pending' && t.status === 'assigned');
       await session.save();
       return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!), unblocked: unblocked.map(summarizeTask) });
+    }
+
+    case 'claim': {
+      const now = Date.now();
+      const taskId = positionals[2] ?? '';
+      const needTask = () => {
+        const task = taskId ? hub.orchestrator.getTask(taskId) : undefined;
+        if (!task) throw new CliError(`task '${taskId}' not found`);
+        return task;
+      };
+      const capacityOf = (m: ColonyMember) => ({ open: hub.claims.heldBy(m.id).length, max: m.capabilities.maxConcurrentTasks });
+      try {
+        switch (sub) {
+          case 'list':
+            return reply({ policy: hub.claims.policy, claims: hub.claims.open() });
+
+          case 'sweep': {
+            const changed = hub.claims.sweep(now);
+            await session.save();
+            return reply({ markedStealable: changed.map((c) => ({ taskId: c.taskId, holderId: c.holderId, reason: c.stealableReason, graceEndsAt: c.graceEndsAt })) });
+          }
+
+          case 'heartbeat': {
+            needTask();
+            const [member] = resolveMembers(session, values.as);
+            const progress = values.progress === undefined ? undefined : Number(values.progress);
+            const claim = hub.claims.heartbeat(taskId, member.id, now, progress);
+            await session.save();
+            return reply({ claim });
+          }
+
+          case 'block': {
+            needTask();
+            const [member] = resolveMembers(session, values.as);
+            const claim = hub.claims.block(taskId, member.id, values.reason ?? '', now);
+            await session.save();
+            return reply({ claim });
+          }
+
+          case 'unblock': {
+            needTask();
+            const [member] = resolveMembers(session, values.as);
+            const claim = hub.claims.unblock(taskId, member.id, now);
+            await session.save();
+            return reply({ claim });
+          }
+
+          case 'release': {
+            needTask();
+            const [member] = resolveMembers(session, values.as);
+            const claim = hub.claims.release(taskId, member.id, now);
+            await session.save();
+            return reply({ claim });
+          }
+
+          case 'steal': {
+            needTask();
+            const [member] = resolveMembers(session, values.as);
+            const { claim, previousHolderId, previousProgress } = hub.claims.steal(taskId, member.id, now, {
+              challengerOpenClaims: capacityOf(member).open,
+              maxClaims: capacityOf(member).max,
+            });
+            await hub.orchestrator.reassignTask(taskId, member.id);
+            await session.save();
+            return reply({ claim, previousHolderId, previousProgress });
+          }
+
+          case 'handoff': {
+            needTask();
+            const [from] = resolveMembers(session, values.as);
+            const target = values.to ? hub.registry.getMember(values.to) : undefined;
+            if (!target) throw new CliError(`--to must be a member id (got '${values.to ?? ''}')`);
+            const claim = hub.claims.requestHandoff(taskId, from.id, target.id, values.reason ?? '', now, {
+              targetOpenClaims: capacityOf(target).open,
+              maxClaims: capacityOf(target).max,
+            });
+            await session.save();
+            return reply({ claim });
+          }
+
+          case 'accept': {
+            needTask();
+            const [member] = resolveMembers(session, values.as);
+            const claim = hub.claims.acceptHandoff(taskId, member.id, now);
+            await hub.orchestrator.reassignTask(taskId, member.id);
+            await session.save();
+            return reply({ claim });
+          }
+
+          case 'reject': {
+            needTask();
+            const [member] = resolveMembers(session, values.as);
+            const claim = hub.claims.rejectHandoff(taskId, member.id, now);
+            await session.save();
+            return reply({ claim });
+          }
+
+          default:
+            throw new CliError('usage: claim list|sweep|heartbeat|block|unblock|release|steal|handoff|accept|reject');
+        }
+      } catch (err) {
+        if (err instanceof ClaimError) throw new CliError(`${err.code}: ${err.message}`);
+        throw err;
+      }
     }
 
     case 'propose': {
