@@ -68,9 +68,10 @@ Az A lista csomagjai a törlés előtt ellenőrizve: egyik sem függött a tör�
 | `claims` | **Részben átvéve:** `coordination/claim-ledger.ts` (foglalás, életjel, blokkolás, elavulás, átvétel, átadás), CLI: `claim ...`. Az összevonás és a szövetséges (federated) tár nem. A részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `memory` | **Részben átvéve:** `memory/hnsw-index.ts` (determinisztikus HNSW), a `FileVectorStore` használja. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `guidance` | **Részben átvéve:** `gates.ts` (kapuk) és a `check` parancs. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
-| `security`, `shared`, `neural`, `aidefence`, `plugin-agent-federation`, `performance` | Még nem kezdtük el. |
+| `security` | **Részben átvéve:** `safe-path.ts` (útvonal-tartalmazás symlinkkel), `safe-git.ts`. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
+| `shared`, `neural`, `aidefence`, `plugin-agent-federation`, `performance` | Még nem kezdtük el. |
 
-89 teszt zöld.
+98 teszt zöld.
 
 ## Még hátra
 

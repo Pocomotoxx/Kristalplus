@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { safeGitText } from '../safe-git.js';
+import { resolveInside, SafePathError } from '../safe-path.js';
 import { ColonyHub } from '../colony-hub.js';
 import { VectorCodex } from '../memory/vector-codex.js';
 import { FileVectorStore } from '../memory/file-vector-store.js';
@@ -67,9 +68,12 @@ export async function loadRules(dir: string): Promise<{ rules: LoadedRule[]; pro
   }
 
   for (const name of mandatory as string[]) {
-    const full = path.resolve(rulesDir, name);
-    if (path.relative(rulesDir, full).startsWith('..') || path.isAbsolute(path.relative(rulesDir, full))) {
-      problems.push(`${name}: outside the rules directory`);
+    let full: string;
+    try {
+      full = (await resolveInside(rulesDir, name)).resolved;
+    } catch (err) {
+      if (!(err instanceof SafePathError)) throw err;
+      problems.push(`${name}: ${err.code === 'OUTSIDE' ? 'outside the rules directory' : err.message}`);
       continue;
     }
     try {
@@ -112,8 +116,7 @@ export interface Revision {
 
 /** Resolve the git commit of `dir`; never throws. `.colony/` is ignored for the dirty flag. */
 export function resolveRevision(dir: string): Revision {
-  const git = (args: string[]): string =>
-    execFileSync('git', ['-C', dir, ...args], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const git = (args: string[]): string => safeGitText(dir, args);
   try {
     const sha = git(['rev-parse', 'HEAD']);
     const dirty = git(['status', '--porcelain', '--', '.', `:(exclude)${STATE_DIR}`]).length > 0;

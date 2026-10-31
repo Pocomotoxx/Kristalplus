@@ -121,6 +121,20 @@ Amit **nem** vettem át, és még át kell nézni: `compiler` (szabályok fordí
 
 A `legacy/ruflo/v3/@claude-flow/guidance` mappa ezért még nem törölhető.
 
+### `security` (részben átvéve)
+
+Átírva: `safe-path.ts`, `safe-git.ts`. Olvasott forrás: `path-validator.ts` (az első 330 sor), `safe-git.ts`. A csomag többi része (kb. 8800 sor) **nincs** átnézve.
+
+Két valódi rést zártak be, mindkettő a Colony saját kódjában volt:
+- **Symlink/junction kiszökés.** A szabályfájlok és a `check --file` addig csak szövegesen ellenőrizték az útvonalat (`..`-ra nézett). Egy, a projekten belüli link, ami kifelé mutat, átment rajta, és a boot kimenete a kívüli fájl tartalmát is kiírta volna. Most a gyökér és a jelölt is a fájlrendszeren át feloldott alakban kerül összehasonlításra (a még nem létező fájlnál a legközelebbi létező szülő). Teszt: junctionnel, szabályfájlra és `check --file`-ra.
+- **`core.fsmonitor`.** A bootban a `git status` egy másolt vagy ellenséges repó helyi konfigurációja által megadott parancsot is lefuttat. Kézzel ellenőriztem: védelem nélkül a parancs lefut, `-c core.fsmonitor=false` mellett nem. Minden git-hívás ezen megy át. Ez egyetlen ismert utat zár le, nem állítom, hogy minden git-beállítást semlegesít.
+
+Eltérés a régi kódtól: a régi `..` részszöveg-tiltás az `a..b` nevű fájlt is elutasítja, itt nem: a feloldott útvonal dönt. A régi kiterjesztés- és névtiltólistát (`.env`, `id_rsa`, `.git`, ...) nem vettem át.
+
+Amit **nem** vettem át és még át kell nézni: `safe-executor`, `input-validator`, `token-generator`, `password-hasher`, `credential-generator`, `tool-output-guardrail`, `mcp-*`, `policy/*` (köztük `product-plane`, 1381 sor), `oauth/*`, `keychain-adapter`, `plugins/integrity-verifier`, `authorization/*`, `CVE-REMEDIATION`. Az OAuth, jelszó, token és kulcstár eleve nem illik a hálózat- és kulcsmentes maghoz.
+
+A `legacy/ruflo/v3/@claude-flow/security` mappa ezért még nem törölhető.
+
 ## Teendők, ha elfogadod
 
 1. A **C** lista törlése egy külön commitban (a git-előzményben megmarad).

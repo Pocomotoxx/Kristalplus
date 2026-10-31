@@ -7,6 +7,8 @@ export * from './consensus/consensus-engine.js';
 export * from './consensus/strategies.js';
 export * from './topology.js';
 export * from './gates.js';
+export * from './safe-path.js';
+export * from './safe-git.js';
 export * from './colony-hub.js';
 
 // Memory & Vector Codex

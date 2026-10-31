@@ -27,6 +27,7 @@ A korábbi „raj” (swarm) helyett mindenhol **kolónia** (colony) a terminol�
 - **Tanulás:** MoE-router és Reasoning Bank, amely a korábbi tapasztalatokat visszatáplálja.
 - **Host-vezérelt működés:** a `colony` parancssori eszköz JSON-t ír ki, így bármelyik host használhatja. A magnak nincs szüksége modellszolgáltatóra.
 - **Boot:** a `colony boot` betölti és ellenőrzi az állapotfájlokat és a szabályfájlokat, feloldja a git-revíziót, és állapotot jelent (`LOADED`, `UNVERIFIABLE`, `BLOCKED`). Boot nélkül a munkaparancsok nem futnak.
+- **Biztonság:** a fájlutak feloldott (symlink/junction követő) tartalmazás-ellenőrzéssel mennek át (`safe-path.ts`: szabályfájlok, `check --file`), a git-hívások nem hagyják, hogy a vizsgált repó saját parancsot futtasson (`core.fsmonitor`, `safe-git.ts`).
 - **Nincs LLM-függés:** a magban nincs modellszolgáltató, hálózati hívás, API-kulcs vagy környezeti változó. A memória beágyazása helyi és determinisztikus.
 
 ## Gyors indítás
@@ -101,7 +102,7 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 
 ## Ismert hiányok
 
-- A `colony-core` tesztjei (`pnpm test`, 89 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
+- A `colony-core` tesztjei (`pnpm test`, 98 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
 - A szabályok csak kötelező készletből állnak, és mind a bootban töltődnek be. Feladathoz kötött szabálybetöltésre (útválasztóra) szándékosan nincs szükség.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
 - A beépített tagok (6 szerep) fixek, a CLI-ből nem lehet újat felvenni.

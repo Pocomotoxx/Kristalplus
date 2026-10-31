@@ -6,6 +6,7 @@ import type { AgentRole, ColonyMember, ColonyTask, TaskPriority } from '../types
 import { ColonySession, loadRules, resolveRevision } from './session.js';
 import { QUORUM_STRATEGIES, QuorumStrategy } from '../consensus/strategies.js';
 import { ClaimError } from '../coordination/claim-ledger.js';
+import { resolveInside, SafePathError } from '../safe-path.js';
 import { aggregateDecision, checkDestructive, checkDiffSize, checkSecrets, checkToolAllowed, GateResult } from '../gates.js';
 import { buildTopology, isFullyConnected, shortestPath, TOPOLOGY_TYPES, TopologyType } from '../topology.js';
 
@@ -295,9 +296,13 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       }
       if (values.text) add(checkSecrets(values.text));
       if (values.file) {
-        const abs = path.resolve(dir, values.file);
-        const rel = path.relative(dir, abs);
-        if (rel.startsWith('..') || path.isAbsolute(rel)) throw new CliError('--file must be inside the project directory');
+        let abs: string;
+        try {
+          abs = (await resolveInside(dir, values.file)).resolved;
+        } catch (err) {
+          if (err instanceof SafePathError) throw new CliError(err.code === 'OUTSIDE' ? '--file must be inside the project directory' : `--file: ${err.message}`);
+          throw err;
+        }
         const stat = await fs.stat(abs).catch(() => null);
         if (!stat?.isFile()) throw new CliError(`file '${values.file}' not found`);
         if (stat.size > 2_000_000) throw new CliError('--file is larger than 2 MB');
