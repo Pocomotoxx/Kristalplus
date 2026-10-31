@@ -51,19 +51,28 @@ A `colony-core` build és mind a 30 teszt változatlanul zöld.
 
 A Ruflo a Colonynak csak váz, egy része: amit átvesz, azt modellszolgáltató nélkül veszi át.
 
+## Átépítés, 3. szakasz: a Ruflo-válogatás C listájának törlése (kész)
+
+A [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md) C listája törölve: 5552 fájl (8316-ról 2764-re csökkent a `legacy/ruflo`). Törölve:
+- 12 `v3/@claude-flow` csomag (köztük `cli`, `providers`, `codex`, `browser`, `watermark`);
+- 30 LLM- vagy hostfüggő, illetve domain-specifikus plugin (köztük a 786 fájlos `ruflo-console`);
+- a Claude/Codex-konfiguráció (`.claude/`, `.agents/`, `.claude-plugin/`, `plugin/`, `chatgpt-plugin/`, `CLAUDE.md`, `AGENTS.md`), a `ruflo/` burkoló, a `v3/goal_ui`, `v3/implementation` és `v3/docs`.
+
+Az A lista csomagjai a törlés előtt ellenőrizve: egyik sem függött a törölt csomagoktól. A Colony build és mind a 30 teszt zöld.
+
 ## Még hátra
 
 | Terület (`legacy/ruflo/` alatt) | Megjegyzés |
 |---|---|
-| `v3/@claude-flow/*` | A Ruflo CLI, MCP, biztonsági és codex csomagjai (4247 fájl). A „swarm” szó kb. 2000 fájlban szerepel. |
-| `plugins/ruflo-*` | 40+ plugin (2245 fájl). Döntés kell, melyik kell a Colonyban. |
-| `ruflo/`, `plugin/` | A Ruflo csomag és a Claude Code plugin. |
-| `.claude/`, `.agents/`, `.harness/` | Claude/Codex-specifikus konfiguráció. |
-| `Cargo.toml`, `crates/` | Rust federációs rész. |
+| `v3/@claude-flow/` A lista | `swarm`, `claims`, `neural`, `memory`, `shared`, `security`, `guidance`, `aidefence`, `plugin-agent-federation`, `performance`: átvétel egyenként, kolónia-szóhasználattal. |
+| `v3/@claude-flow/` B lista | `hooks`, `embeddings` (csak a helyi rész), `mcp`: döntés, ha szükség lesz rájuk. |
+| `plugins/` (18 maradt) | `ruflo-adr`, `-agentdb`, `-aidefence`, `-arena`, `-daa`, `-ddd`, `-federation`, `-goals`, `-graph-intelligence`, `-knowledge-graph`, `-observability`, `-protector`, `-rag-memory`, `-ruvector`, `-rvf`, `-security-audit`, `-swarm`, `-workflows`. Egyenként döntés. |
+| `v3/crates`, `Cargo.toml`, `crates/` | Rust federációs rész, csak a federációval együtt. |
+| `docs/`, `scripts/`, `tests/`, `.github/`, `.harness/`, gyökérfájlok | Maradék Ruflo-anyag. Az átvétel végén törlendő. |
 
 ## Javasolt sorrend a folytatáshoz
 
-1. **Plugin- és csomagleltár:** minden `ruflo-*` pluginra és `@claude-flow/*` csomagra döntés: átvesz / újraír / kivezet. A kivezetettek törlése.
+1. **Az A lista átvétele:** `swarm` → `claims` → `memory` → `guidance` → `security`, egyenként, szolgáltatóra utaló részek nélkül, tesztekkel. A B lista és a maradék pluginok egyenként.
 2. **Licenc és eredet:** az eredeti `LICENSE` és a szerzői jogi nyilatkozat beszerzése a forrásprojektből. A megmaradó átvett kód jelölése.
 3. **Tesztek bővítése:** `ColonyHub`, `FileVectorStore`, `moe-router`, `reasoning-bank`.
 4. **A plant.md hiányzó fázisai** (V., VI.) pontosítása. Kód nincs hozzájuk.

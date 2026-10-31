@@ -1,5 +1,0 @@
-{
-  "mcpServers": {
-    "ruflo-ai-team": { "type": "http", "url": "https://team.ruv.io/mcp" }
-  }
-}

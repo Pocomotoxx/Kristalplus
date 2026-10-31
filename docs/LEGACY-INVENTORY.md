@@ -1,6 +1,8 @@
 # A `legacy/ruflo` leltára és válogatás
 
-Állapot: 2026-10-31. **Ez javaslat, nem törlés.** Semmi nem lett törölve vagy mozgatva ezen a leltáron alapulva.
+Állapot: 2026-10-31. **A C lista törölve** (5552 fájl, külön commit, a git-előzményben megvan). Az A és B lista még javaslat: abból semmi nem lett átvéve vagy törölve.
+
+A törlés előtt ellenőriztem, hogy az A lista egyik csomagja sem függ a törölt csomagoktól (a `package.json` függőségei alapján).
 
 ## Hogyan készült
 
