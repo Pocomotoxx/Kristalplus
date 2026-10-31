@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { BUILTIN_AGENT_PROFILES } from '../agents/agent-profiles.js';
@@ -5,6 +6,7 @@ import type { AgentRole, ColonyMember, ColonyTask, TaskPriority } from '../types
 import { ColonySession, loadRules, resolveRevision } from './session.js';
 import { QUORUM_STRATEGIES, QuorumStrategy } from '../consensus/strategies.js';
 import { ClaimError } from '../coordination/claim-ledger.js';
+import { aggregateDecision, checkDestructive, checkDiffSize, checkSecrets, checkToolAllowed, GateResult } from '../gates.js';
 import { buildTopology, isFullyConnected, shortestPath, TOPOLOGY_TYPES, TopologyType } from '../topology.js';
 
 export interface CommandResult {
@@ -33,7 +35,9 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   fail <taskId> --error <text>            mark a task failed
   propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous] [--timeout-min M] [--data text]
   topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
-  claim list | sweep                      who holds which task; sweep marks stale or long-blocked claims stealable
+  check                                   run gates BEFORE acting: [--command TEXT] [--text TEXT] [--file PATH [--diff-lines N] [--threshold N]]
+                                          [--tool NAME --allow a,b*]; exit 3 on "block". A gate is a check you call, not an interceptor.
+  claim list | sweep                    who holds which task; sweep marks stale or long-blocked claims stealable
   claim heartbeat <taskId> --as <member>  [--progress 0..100]   show life; takes a stealable claim back
   claim block <taskId> --as <member> --reason <text> | claim unblock <taskId> --as <member>
   claim release <taskId> --as <member>    give the task up (anyone may take it over at once)
@@ -102,6 +106,13 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         reason: { type: 'string' },
         confidence: { type: 'string' },
         progress: { type: 'string' },
+        command: { type: 'string' },
+        text: { type: 'string' },
+        file: { type: 'string' },
+        tool: { type: 'string' },
+        allow: { type: 'string' },
+        'diff-lines': { type: 'string' },
+        threshold: { type: 'string' },
         approve: { type: 'boolean' },
         reject: { type: 'boolean' },
         ns: { type: 'string' },
@@ -268,6 +279,44 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const unblocked = hub.orchestrator.getAllTasks().filter((t) => before.get(t.id) === 'pending' && t.status === 'assigned');
       await session.save();
       return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!), unblocked: unblocked.map(summarizeTask) });
+    }
+
+    case 'check': {
+      if (!values.command && !values.text && !values.file && !values.tool) {
+        throw new CliError('check needs at least one of --command, --text, --file, --tool');
+      }
+      const results: GateResult[] = [];
+      const add = (r: GateResult | null) => {
+        if (r) results.push(r);
+      };
+      if (values.command) {
+        add(checkDestructive(values.command));
+        add(checkSecrets(values.command));
+      }
+      if (values.text) add(checkSecrets(values.text));
+      if (values.file) {
+        const abs = path.resolve(dir, values.file);
+        const rel = path.relative(dir, abs);
+        if (rel.startsWith('..') || path.isAbsolute(rel)) throw new CliError('--file must be inside the project directory');
+        const stat = await fs.stat(abs).catch(() => null);
+        if (!stat?.isFile()) throw new CliError(`file '${values.file}' not found`);
+        if (stat.size > 2_000_000) throw new CliError('--file is larger than 2 MB');
+        add(checkSecrets(await fs.readFile(abs, 'utf-8')));
+        if (values['diff-lines'] !== undefined) {
+          const lines = Number(values['diff-lines']);
+          const threshold = values.threshold === undefined ? undefined : Number(values.threshold);
+          if (!Number.isFinite(lines) || lines < 0) throw new CliError('--diff-lines must be a non-negative number');
+          if (threshold !== undefined && !(threshold >= 0)) throw new CliError('--threshold must be a non-negative number');
+          add(checkDiffSize(values.file, lines, threshold));
+        }
+      }
+      if (values.tool) {
+        const allow = values.allow ? values.allow.split(',').map((s) => s.trim()).filter(Boolean) : [];
+        add(checkToolAllowed(values.tool, allow));
+      }
+      const decision = aggregateDecision(results);
+      const output = { ok: decision !== 'block', decision, results, ...(warnings.length ? { warnings } : {}) };
+      return { code: decision === 'block' ? 3 : 0, output };
     }
 
     case 'claim': {

@@ -105,6 +105,22 @@ A HNSW közelítő: a tesztben 1500 vektoron, 16 dimenzióban a találatok legal
 
 A `legacy/ruflo/v3/@claude-flow/memory` mappa ezért még nem törölhető.
 
+### `guidance` (részben átvéve)
+
+Átírva: `gates.ts` és a `check` parancs. Olvasott forrás: `gates.ts`. A csomag többi része (kb. 22 000 sor) **nincs** átnézve.
+
+| Régi elem | Mi lett belőle |
+|---|---|
+| `EnforcementGates`: romboló műveletek, titkok, diff-méret, eszköz-engedélylista | Négy tiszta függvény (`checkDestructive`, `checkSecrets`, `checkDiffSize`, `checkToolAllowed`) és `aggregateDecision`. |
+| Titok kimaszkolása az első és utolsó 4 karakter mutatásával | **Nem mutat belőle semmit**: csak a minta neve és a pozíció szerepel az eredményben. |
+| `rm -rf` minta | Szélesebb: `rm -fr`, `rm -r -f`, `git push -f`, idézőjelben lévő `DELETE FROM x`. |
+
+Fontos korlát: a régi csomag a „kapu" szót hookokra építette („a modell felejthet, a hook nem"). A Colonyban a kapu egy ellenőrzés, amit a host hív (`colony check`). Semmi nem akadályozza meg, hogy a host kihagyja, ezért egy kapu megléte nem bizonyítja, hogy a munka átment rajta.
+
+Amit **nem** vettem át, és még át kell nézni: `compiler` (szabályok fordítása), `retriever` (szabálykeresés feladat szerint; a Colony szándékosan minden szabályt a bootban tölt), `ledger`, `optimizer`, `evolution`, `trust`, `authority`, `capabilities`, `proof`, `conformance-kit`, `analyzer` (3260 sor), `ruvbot-integration`, `wasm-kernel`, `headless`.
+
+A `legacy/ruflo/v3/@claude-flow/guidance` mappa ezért még nem törölhető.
+
 ## Teendők, ha elfogadod
 
 1. A **C** lista törlése egy külön commitban (a git-előzményben megmarad).
