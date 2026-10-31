@@ -16,7 +16,7 @@
 | LLM szolgáltatók | `llm/providers.ts` |
 | Futtató | `github-runner.ts`, `.github/workflows/kristal-colony-runner.yml` |
 
-Ellenőrizve: tiszta telepítés után `pnpm build` hibátlan, és az `example.js` lefut offline módban. Automatikus teszt nincs.
+Ellenőrizve: tiszta telepítés után `pnpm build` hibátlan, és az `example.js` lefut offline módban. A `pnpm test` 15 tesztje mind zöld (busz, nyilvántartás, orchestrator, konszenzus, vektortár). Teszt még hiányzik a `ColonyHub`, `ColonyWorker`, `llm/providers`, `FileVectorStore`, `moe-router` és `reasoning-bank` modulokhoz.
 
 ## Még Ruflo (átírandó vagy kivezetendő)
 
@@ -31,7 +31,7 @@ Ellenőrizve: tiszta telepítés után `pnpm build` hibátlan, és az `example.j
 
 ## Javasolt sorrend
 
-1. **Tesztek** a `colony-core`-hoz (`node --test`): registry, orchestrator függőségek, konszenzus, vector store.
+1. **Tesztek bővítése** (az alapok kész): `ColonyHub`, `ColonyWorker`, szolgáltatók (mockolt `fetch`-csel), `FileVectorStore`, `moe-router`, `reasoning-bank`.
 2. **A plant.md hiányzó fázisai** (V., VI.) pontosítása. Kód nincs hozzájuk.
 3. **Plugin-leltár:** minden `ruflo-*` pluginra döntés: átvesz / újraír / kivezet.
 4. **Gyökér átnevezése:** új gyökér `package.json` (workspace a `packages/*`-ra), `AGENTS.md` és `CLAUDE.md` újraírása Colony-szemlélettel.

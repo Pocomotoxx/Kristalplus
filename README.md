@@ -34,6 +34,7 @@ Szükséges: Node.js 20+ és pnpm.
 cd packages/colony-core
 pnpm install
 pnpm build
+pnpm test
 node dist/example.js
 ```
 
@@ -67,7 +68,7 @@ v3/, plugins/, ruflo/, plugin/   régi Ruflo-kód (átírandó vagy kivezetendő
 
 ## Ismert hiányok
 
-- A `colony-core` csomagban még nincsenek automatikus tesztek (a `pnpm test` üres).
+- A `colony-core` tesztjei (`pnpm test`, 15 teszt) a busz, a nyilvántartás, az orchestrator, a konszenzus és a vektortár alapjait fedik. A `ColonyHub`, a `ColonyWorker`, az LLM-szolgáltatók, a `FileVectorStore`, a MoE-router és a Reasoning Bank tesztelése még hiányzik.
 - A `plant.md` V. és VI. fázisa nincs leírva, és nincs bennük kész kód.
 - A repó gyökere (`package.json`, `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md`) még Ruflo-azonosságot mutat.
 
