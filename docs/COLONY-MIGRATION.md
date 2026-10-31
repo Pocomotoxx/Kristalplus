@@ -66,9 +66,10 @@ Az A lista csomagjai a törlés előtt ellenőrizve: egyik sem függött a tör�
 |---|---|
 | `swarm` | **Részben átvéve:** topológia (`topology.ts`), kvórum-stratégiák (`consensus/strategies.ts`), CLI: `topology` és `propose --strategy`. A nagy koordinátorokat (queen, unified, attention, worker-dispatch, federation-hub) még át kell nézni. A részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `claims` | **Részben átvéve:** `coordination/claim-ledger.ts` (foglalás, életjel, blokkolás, elavulás, átvétel, átadás), CLI: `claim ...`. Az összevonás és a szövetséges (federated) tár nem. A részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
-| `memory`, `guidance`, `security`, `shared`, `neural`, `aidefence`, `plugin-agent-federation`, `performance` | Még nem kezdtük el. |
+| `memory` | **Részben átvéve:** `memory/hnsw-index.ts` (determinisztikus HNSW), a `FileVectorStore` használja. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
+| `guidance`, `security`, `shared`, `neural`, `aidefence`, `plugin-agent-federation`, `performance` | Még nem kezdtük el. |
 
-67 teszt zöld.
+79 teszt zöld.
 
 ## Még hátra
 

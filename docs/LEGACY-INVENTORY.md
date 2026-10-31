@@ -89,6 +89,22 @@ Eltérések a régi kódtól, szándékosan:
 
 A `legacy/ruflo/v3/@claude-flow/claims` mappa ezért még nem törölhető.
 
+### `memory` (részben átvéve)
+
+Átírva: `memory/hnsw-index.ts`. Olvasott forrás: `hnsw-index.ts` (a keresés, beszúrás, eltávolítás és szerializálás része). A többi fájlt (kb. 19 000 sor) **nem** olvastam át.
+
+| Régi elem | Mi lett belőle |
+|---|---|
+| `HNSWIndex`: a réteget `Math.random()` adta | A réteg az azonosító hash-éből jön, a döntetlent az azonosító dönti el: ugyanabból a beszúrássorozatból mindig ugyanaz a gráf. |
+| Eltávolítás, keresés, koszinusz-távolság | Átírva. Eltávolításkor a szomszédok kapcsolatait javítja. |
+| `FileVectorStore` lineáris keresése | `index: 'auto'` (alapérték): 500 vektorig pontos lineáris keresés, fölötte HNSW. Névtérszűrésnél, ha a gráf kevés találatot ad, pontos keresésre vált. |
+
+Amit **nem** vettem át: kvantálás, bináris szerializálás (a gráf a dokumentumokból újraépül), eseménykibocsátó, SQLite/sql.js/AgentDB/RVF háttértárak, `hybrid-backend`, `tiered-memory`, `smart-retrieval`, `consolidator`, `memory-graph`, `learning-bridge`, `auto-memory-bridge`, `controller-registry`. Ezeket átvétel előtt át kell nézni, és a külső adatbázisokra épülőket valószínűleg nem kell.
+
+A HNSW közelítő: a tesztben 1500 vektoron, 16 dimenzióban a találatok legalább 90%-a egyezik a pontos kereséssel. Ez egy mérés egy szintetikus adaton, nem garancia.
+
+A `legacy/ruflo/v3/@claude-flow/memory` mappa ezért még nem törölhető.
+
 ## Teendők, ha elfogadod
 
 1. A **C** lista törlése egy külön commitban (a git-előzményben megmarad).

@@ -22,7 +22,7 @@ A korábbi „raj” (swarm) helyett mindenhol **kolónia** (colony) a terminol�
 - **Konszenzus:** kvórum- és megbízhatósággal súlyozott szavazás. A kvórum rögzíthető, vagy stratégiából jön a szavazók számából: `majority`, `supermajority`, `byzantine` (3f+1), `unanimous`. Ha a kvórum már nem érhető el, a javaslat azonnal elutasítva lesz.
 - **Foglalások (claims):** a `next` foglalást nyit a feladatra, a `done` / `fail` lezárja. Ha a gazdagép-munkamenet elhal, a foglalás elavul, és másik tag átveheti, vagy a gazda átadhatja. Az idő mindig paraméter, nincs időzítő és véletlen, ezért az egész visszajátszható.
 - **Topológia:** a tagok kapcsolati gráfja (`mesh`, `star`, `tree`, `hybrid`), determinisztikusan: ugyanazokból a tagokból mindig ugyanaz a gráf. Vezetőválasztás, szomszédok, legrövidebb út.
-- **Memória (Vector Codex):** szolgáltatófüggetlen embedding-felület, koszinusz-hasonlóságú vektortár névterekkel, fájlalapú perzisztencia a `.colony/memory.json` fájlban.
+- **Memória (Vector Codex):** szolgáltatófüggetlen embedding-felület, koszinusz-hasonlóságú vektortár névterekkel, fájlalapú perzisztencia a `.colony/memory.json` fájlban. A keresés alapból pontos (lineáris), 500 vektor fölött determinisztikus HNSW-gráf gyorsítja (`index: 'linear' | 'hnsw' | 'auto'`). A gráf nincs mentve, a tárolt dokumentumokból épül újra, mindig ugyanúgy.
 - **Ágensek:** beépített profilok (Director, Architect, Coder, Reviewer, Tester, Security) és zod-alapú, típusbiztos eszköztár.
 - **Tanulás:** MoE-router és Reasoning Bank, amely a korábbi tapasztalatokat visszatáplálja.
 - **Host-vezérelt működés:** a `colony` parancssori eszköz JSON-t ír ki, így bármelyik host használhatja. A magnak nincs szüksége modellszolgáltatóra.
@@ -100,7 +100,7 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 
 ## Ismert hiányok
 
-- A `colony-core` tesztjei (`pnpm test`, 67 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
+- A `colony-core` tesztjei (`pnpm test`, 79 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
 - A szabályok csak kötelező készletből állnak, és mind a bootban töltődnek be. Feladathoz kötött szabálybetöltésre (útválasztóra) szándékosan nincs szükség.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
 - A beépített tagok (6 szerep) fixek, a CLI-ből nem lehet újat felvenni.
