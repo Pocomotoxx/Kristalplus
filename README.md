@@ -24,7 +24,7 @@ A korábbi „raj” (swarm) helyett mindenhol **kolónia** (colony) a terminol�
 - **Ágensek:** beépített profilok (Director, Architect, Coder, Reviewer, Tester, Security) és zod-alapú, típusbiztos eszköztár.
 - **Tanulás:** MoE-router és Reasoning Bank, amely a korábbi tapasztalatokat visszatáplálja.
 - **Host-vezérelt működés:** a `colony` parancssori eszköz JSON-t ír ki, így bármelyik host használhatja. A magnak nincs szüksége modellszolgáltatóra.
-- **Boot:** a `colony boot` betölti és ellenőrzi az állapotfájlokat, feloldja a git-revíziót, és állapotot jelent (`LOADED`, `UNVERIFIABLE`, `BLOCKED`). Boot nélkül a munkaparancsok nem futnak.
+- **Boot:** a `colony boot` betölti és ellenőrzi az állapotfájlokat és a szabályfájlokat, feloldja a git-revíziót, és állapotot jelent (`LOADED`, `UNVERIFIABLE`, `BLOCKED`). Boot nélkül a munkaparancsok nem futnak.
 - **Opcionális, kulcsot igénylő rész (örökölt):** a `llm/providers.ts` (Gemini és OpenAI-kompatibilis végpontok) és a GitHub Actions runner. A host-vezérelt útnak nincs rájuk szüksége.
 
 ## Gyors indítás
@@ -64,9 +64,17 @@ node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres ere
 A boot állapotai (a Krista bootlogikáját követve):
 - `LOADED`: az állapotfájlok érvényesek, a git-revízió ismert.
 - `UNVERIFIABLE`: az állapot érvényes, de a revízió ismeretlen. Tartalmi munka mehet, repómódosítás nem.
-- `BLOCKED`: egy állapotfájl hibás. A boot ezt rögzíti, és a munkaparancsok megtagadják a futást, amíg a hiba ki nincs javítva. Hibás állapotfájlt a rendszer soha nem ír felül csendben.
+- `BLOCKED`: egy állapotfájl hibás, vagy egy kötelező szabályfájl hiányzik, üres vagy a szabálykönyvtáron kívülre mutat. A boot ezt rögzíti, és a munkaparancsok megtagadják a futást, amíg a hiba ki nincs javítva. Hibás állapotfájlt a rendszer soha nem ír felül csendben.
 
 Ha a git-revízió megváltozott a boot óta, a parancsok figyelmeztetnek, hogy újra kell bootolni.
+
+### Szabályok
+
+A kötelező szabályokat a `.colony/rules/manifest.json` sorolja fel (`mandatory`), a fájlok ugyanabban a mappában vannak. Az első boot egy kis kezdőkészletet ír ki (munkaprotokoll, őszinte jelentés, konszenzus). Ezt utána a projekt szabadon átírhatja és bővítheti, a rendszer a meglévő fájlokat soha nem írja felül.
+
+- A boot kimenete tartalmazza minden szabály szövegét és SHA-256 hash-ét. A host ezeket olvassa be.
+- Ha boot után bármelyik szabályfájl megváltozik, eltűnik vagy olvashatatlan lesz, a munkaparancsok kódja 2, és újra kell bootolni.
+- A boot a beolvasást és a hash-t bizonyítja, nem azt, hogy a host alkalmazta is a szabályokat.
 
 ### Örökölt, kulcsot igénylő rész
 
@@ -84,8 +92,9 @@ v3/, plugins/, ruflo/, plugin/   régi Ruflo-kód (átírandó vagy kivezetendő
 
 ## Ismert hiányok
 
-- A `colony-core` tesztjei (`pnpm test`, 26 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, feladatok, szavazás, memória). A `ColonyWorker`, az LLM-szolgáltatók, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
-- A boot jelenleg csak az állapotfájlokat és a git-revíziót ellenőrzi. Szabályfájlok betöltése (mint a Kristában a `runtime/` modulok) még nincs.
+- A `colony-core` tesztjei (`pnpm test`, 30 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyWorker`, az LLM-szolgáltatók, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
+- A szabályok csak kötelező készletből állnak. Opcionális, feladathoz kötött szabálybetöltés (mint a Kristában az útválasztó) még nincs.
+- A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
 - A beépített tagok (6 szerep) fixek, a CLI-ből nem lehet újat felvenni.
 - A `plant.md` V. és VI. fázisa nincs leírva, és nincs bennük kész kód.
 - A repó gyökere (`package.json`, `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md`) még Ruflo-azonosságot mutat.

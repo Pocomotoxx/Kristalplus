@@ -2,7 +2,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { BUILTIN_AGENT_PROFILES } from '../agents/agent-profiles.js';
 import type { AgentRole, ColonyMember, ColonyTask, TaskPriority } from '../types.js';
-import { ColonySession, resolveRevision } from './session.js';
+import { ColonySession, loadRules, resolveRevision } from './session.js';
 
 export interface CommandResult {
   code: number;
@@ -37,11 +37,8 @@ Global: --dir <path>  project directory (default: current directory)`;
 
 const PROTOCOL = [
   'You (the host) are the model: the colony keeps the ledger, the routing, the votes and the memory.',
-  'Take work only through `next`; do the work yourself; report it with `done` or `fail`.',
-  '`done` needs a real result. Never invent a result, a vote reason or a memory entry.',
-  'A task with consensus needs an approved proposal before `done`; vote with a concrete reason.',
-  'Boot status UNVERIFIABLE means the git revision is unknown: content work is allowed, repository mutation is not.',
-  'Boot proves the colony state was read and validated. It does not prove that you applied these rules.',
+  'The rule files in `rules` are binding for this session; read them in full before starting work.',
+  'Boot proves the state and the rule files were read and hashed. It does not prove that you applied the rules.',
 ];
 
 function resolveMembers(session: ColonySession, who: string | undefined): ColonyMember[] {
@@ -106,7 +103,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
   if (!command || command === 'help' || values.help) return { code: 0, output: { ok: true, usage: USAGE } };
 
   if (command === 'boot') {
-    const { record, session } = await ColonySession.boot(dir);
+    const { record, session, rules } = await ColonySession.boot(dir);
     const ok = record.status !== 'BLOCKED';
     return {
       code: ok ? 0 : 2,
@@ -115,6 +112,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         boot: record,
         ...(session ? { colony: session.hub.getSnapshot(), roles: Object.values(BUILTIN_AGENT_PROFILES).map((p) => p.role) } : {}),
         protocol: PROTOCOL,
+        ...(ok ? { rules: rules.map((r) => ({ path: r.path, sha256: r.sha256, text: r.text })) } : {}),
       },
     };
   }
@@ -123,6 +121,14 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
   if (!boot || boot.status === 'BLOCKED') {
     throw new CliError(boot ? `last boot was BLOCKED: ${boot.problems.join('; ')}` : 'colony is not booted: run `colony boot`', 2);
   }
+  const currentRules = await loadRules(dir);
+  const booted = new Map((boot.rules ?? []).map((r) => [r.path, r.sha256]));
+  const drifted =
+    currentRules.problems.length > 0 ||
+    currentRules.rules.length !== booted.size ||
+    currentRules.rules.some((r) => booted.get(r.path) !== r.sha256);
+  if (drifted) throw new CliError('rule files changed, vanished or became unreadable since boot: run `colony boot` again', 2);
+
   const warnings: string[] = [];
   if (resolveRevision(dir).sha !== boot.revision) warnings.push('git revision changed since boot; run `colony boot` again');
 

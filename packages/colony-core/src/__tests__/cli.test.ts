@@ -176,6 +176,70 @@ test('memory add and search round-trip through the file store; completed work is
   assert.ok(learned.out.results.some((r: any) => /widget parser implemented/.test(r.text)));
 });
 
+const rulesPath = (name: string, file = '') => path.join(root, name, '.colony', 'rules', file);
+
+test('first boot seeds the starter rules and returns their text with hashes', async () => {
+  const run = await project('rules-seed');
+  const r = await run('boot');
+  assert.equal(r.code, 0);
+  assert.equal(r.out.rules.length, 3);
+  assert.ok(r.out.rules.every((x: any) => /^[0-9a-f]{64}$/.test(x.sha256) && x.text.length > 0));
+  assert.deepEqual(
+    r.out.boot.rules.map((x: any) => x.path),
+    r.out.rules.map((x: any) => x.path)
+  );
+  assert.ok((await fs.readdir(rulesPath('rules-seed'))).includes('manifest.json'));
+});
+
+test('a project-edited rule survives a re-boot (starter rules never overwrite)', async () => {
+  const run = await project('rules-edit');
+  await run('boot');
+  await fs.writeFile(rulesPath('rules-edit', '00-protocol.md'), '# Saját szabály\n', 'utf-8');
+  const r = await run('boot');
+  assert.equal(r.code, 0);
+  assert.ok(r.out.rules.some((x: any) => x.text === '# Saját szabály\n'));
+});
+
+test('editing a rule after boot revokes work until the next boot', async () => {
+  const run = await project('rules-drift');
+  await run('boot');
+  assert.equal((await run('status')).code, 0);
+
+  await fs.appendFile(rulesPath('rules-drift', '10-evidence.md'), '- extra sor\n', 'utf-8');
+  const drift = await run('status');
+  assert.equal(drift.code, 2);
+  assert.match(drift.out.error, /rule files changed/);
+
+  assert.equal((await run('boot')).code, 0);
+  assert.equal((await run('status')).code, 0);
+});
+
+test('a missing, empty or out-of-directory mandatory rule blocks boot', async () => {
+  const run = await project('rules-missing');
+  await run('boot');
+
+  await fs.rm(rulesPath('rules-missing', '20-consensus.md'));
+  const missing = await run('boot');
+  assert.equal(missing.code, 2);
+  assert.equal(missing.out.boot.status, 'BLOCKED');
+  assert.match(missing.out.boot.problems.join(' '), /20-consensus\.md/);
+  assert.equal(missing.out.rules, undefined);
+  assert.equal((await run('status')).code, 2);
+
+  await fs.writeFile(rulesPath('rules-missing', '20-consensus.md'), '   \n', 'utf-8');
+  assert.match((await run('boot')).out.boot.problems.join(' '), /empty rule file/);
+
+  await fs.writeFile(
+    rulesPath('rules-missing', 'manifest.json'),
+    JSON.stringify({ version: 1, mandatory: ['../ledger.json'] }),
+    'utf-8'
+  );
+  assert.match((await run('boot')).out.boot.problems.join(' '), /outside the rules directory/);
+
+  await fs.writeFile(rulesPath('rules-missing', 'manifest.json'), '{ nope', 'utf-8');
+  assert.equal((await run('boot')).out.boot.status, 'BLOCKED');
+});
+
 test('next and vote reject an unknown role or member', async () => {
   const run = await project('unknown');
   await run('boot');

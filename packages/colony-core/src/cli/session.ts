@@ -8,8 +8,11 @@ import { FileVectorStore } from '../memory/file-vector-store.js';
 import { BUILTIN_AGENT_PROFILES } from '../agents/agent-profiles.js';
 import type { SerializedProposal } from '../consensus/consensus-engine.js';
 import type { ColonyMember, ColonyTask } from '../types.js';
+import { DEFAULT_MANIFEST, DEFAULT_RULES } from './default-rules.js';
 
 export const STATE_DIR = '.colony';
+const RULES_DIR = 'rules';
+const MANIFEST_FILE = 'manifest.json';
 const LEDGER_FILE = 'ledger.json';
 const MEMORY_FILE = 'memory.json';
 const BOOT_FILE = 'boot.json';
@@ -29,7 +32,74 @@ export interface BootRecord {
   dirty: boolean | null;
   bootedAt: number;
   evidence: Array<{ path: string; sha256: string; bytes: number }>;
+  rules: Array<{ path: string; sha256: string; bytes: number }>;
   problems: string[];
+}
+
+export interface LoadedRule {
+  path: string;
+  sha256: string;
+  bytes: number;
+  text: string;
+}
+
+/**
+ * Load the mandatory rule files listed in `.colony/rules/manifest.json`.
+ * Any missing, unreadable or out-of-directory entry is reported as a problem; nothing is skipped silently.
+ */
+export async function loadRules(dir: string): Promise<{ rules: LoadedRule[]; problems: string[] }> {
+  const rulesDir = path.join(dir, STATE_DIR, RULES_DIR);
+  const rules: LoadedRule[] = [];
+  const problems: string[] = [];
+
+  let mandatory: unknown;
+  try {
+    const manifest = JSON.parse(await fs.readFile(path.join(rulesDir, MANIFEST_FILE), 'utf-8'));
+    mandatory = manifest?.mandatory;
+  } catch (err: any) {
+    return { rules, problems: [`${RULES_DIR}/${MANIFEST_FILE}: ${err.message}`] };
+  }
+  if (!Array.isArray(mandatory) || mandatory.some((m) => typeof m !== 'string')) {
+    return { rules, problems: [`${RULES_DIR}/${MANIFEST_FILE}: 'mandatory' must be an array of file names`] };
+  }
+
+  for (const name of mandatory as string[]) {
+    const full = path.resolve(rulesDir, name);
+    if (path.relative(rulesDir, full).startsWith('..') || path.isAbsolute(path.relative(rulesDir, full))) {
+      problems.push(`${name}: outside the rules directory`);
+      continue;
+    }
+    try {
+      const text = await fs.readFile(full, 'utf-8');
+      if (!text.trim()) {
+        problems.push(`${name}: empty rule file`);
+        continue;
+      }
+      rules.push({ path: `${STATE_DIR}/${RULES_DIR}/${name}`, sha256: sha256(text), bytes: Buffer.byteLength(text), text });
+    } catch (err: any) {
+      problems.push(`${name}: ${err.message}`);
+    }
+  }
+  return { rules, problems };
+}
+
+/** Write the starter rules when the project has no rule manifest yet. Existing rules are never overwritten. */
+async function seedRules(dir: string): Promise<boolean> {
+  const rulesDir = path.join(dir, STATE_DIR, RULES_DIR);
+  const manifestPath = path.join(rulesDir, MANIFEST_FILE);
+  try {
+    await fs.access(manifestPath);
+    return false;
+  } catch {
+    await fs.mkdir(rulesDir, { recursive: true });
+    for (const [name, text] of Object.entries(DEFAULT_RULES)) {
+      await fs.writeFile(path.join(rulesDir, name), text, { encoding: 'utf-8', flag: 'wx' }).catch((err) => {
+        if (err.code !== 'EEXIST') throw err;
+      });
+    }
+    await fs.writeFile(manifestPath, JSON.stringify(DEFAULT_MANIFEST, null, 2), 'utf-8');
+    return true;
+  }
 }
 
 export interface Revision {
@@ -131,7 +201,7 @@ export class ColonySession {
    * LOADED = state valid and revision resolved; UNVERIFIABLE = state valid, revision unknown
    * (content work allowed, repository mutation not); BLOCKED = a state file is unreadable or malformed.
    */
-  public static async boot(dir: string): Promise<{ record: BootRecord; session: ColonySession | null }> {
+  public static async boot(dir: string): Promise<{ record: BootRecord; session: ColonySession | null; rules: LoadedRule[] }> {
     const stateDir = path.join(dir, STATE_DIR);
     const revision = resolveRevision(dir);
     const evidence: BootRecord['evidence'] = [];
@@ -155,13 +225,23 @@ export class ColonySession {
       }
     }
 
-    const status: BootStatus = session === null ? 'BLOCKED' : revision.sha === 'unknown' ? 'UNVERIFIABLE' : 'LOADED';
+    let loaded: LoadedRule[] = [];
+    if (session) {
+      await seedRules(dir);
+      const result = await loadRules(dir);
+      loaded = result.rules;
+      problems.push(...result.problems);
+    }
+
+    const status: BootStatus =
+      session === null || problems.length > 0 ? 'BLOCKED' : revision.sha === 'unknown' ? 'UNVERIFIABLE' : 'LOADED';
     const record: BootRecord = {
       status,
       revision: revision.sha,
       dirty: revision.dirty,
       bootedAt: Date.now(),
       evidence,
+      rules: loaded.map(({ path: p, sha256: h, bytes }) => ({ path: p, sha256: h, bytes })),
       problems,
     };
 
@@ -172,7 +252,7 @@ export class ColonySession {
     // Always overwrite the boot record, so a BLOCKED boot revokes an earlier successful one.
     await fs.mkdir(stateDir, { recursive: true });
     await fs.writeFile(path.join(stateDir, BOOT_FILE), JSON.stringify(record, null, 2), 'utf-8');
-    return { record, session };
+    return { record, session, rules: loaded };
   }
 
   /** The record of the last successful boot, or null when the colony has not been booted. */

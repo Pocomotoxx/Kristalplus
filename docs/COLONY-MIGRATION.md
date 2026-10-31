@@ -24,7 +24,8 @@ Nincs API-kulcs: a host (Cowork) maga a modell, a mag csak főkönyv. Ehhez kés
 - `cli/session.ts`: állapot betöltése és mentése (`.colony/ledger.json`, `.colony/memory.json`), boot (`LOADED` / `UNVERIFIABLE` / `BLOCKED`), revízió-feloldás.
 - `cli/commands.ts` és `cli.ts`: a `colony` parancs (boot, status, task, next, done, fail, propose, vote, memory).
 - `snapshot()` / `restore()` a nyilvántartásban, az orchestratorban és a konszenzusmotorban.
-- 11 CLI-teszt a teljes munkafolyamatra.
+- Szabálybetöltés a bootban: `.colony/rules/manifest.json` + kötelező szabályfájlok, hash-elve, driftvédelemmel (`cli/default-rules.ts` a kezdőkészlet).
+- 15 CLI-teszt a teljes munkafolyamatra és a szabályokra (összesen 30 teszt, mind zöld).
 
 Következmény: a `llm/providers.ts`, a `ColonyWorker` (saját végrehajtás) és a `github-runner` + workflow a host-vezérelt úton nem kell. Döntés kell: kivezetés vagy opcionális marad.
 
