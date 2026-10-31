@@ -1,5 +1,6 @@
 import { ConsensusProposal, ConsensusVote } from '../types.js';
 import { MessageBus } from '../message-bus.js';
+import { canStillReach, QuorumStrategy, requiredApprovals } from './strategies.js';
 
 export interface ProposalOptions<T = unknown> {
   taskId: string;
@@ -7,6 +8,9 @@ export interface ProposalOptions<T = unknown> {
   topic: string;
   data: T;
   quorum?: number; // Minimum number of approving votes
+  /** Derive the quorum from the number of eligible voters. Needs `voters`; excludes `quorum`. */
+  strategy?: QuorumStrategy;
+  voters?: number;
   timeoutMs?: number;
 }
 
@@ -30,6 +34,12 @@ export class ConsensusEngine {
     const id = `prop_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const timeoutMs = options.timeoutMs || 30000;
 
+    if (options.strategy !== undefined) {
+      if (options.quorum !== undefined) throw new Error('pass either a quorum or a strategy, not both');
+      if (options.voters === undefined) throw new Error('a strategy needs the number of eligible voters');
+    }
+    const quorum = options.strategy ? requiredApprovals(options.strategy, options.voters!) : options.quorum || 2;
+
     const proposal: ConsensusProposal<T> = {
       id,
       taskId: options.taskId,
@@ -38,7 +48,8 @@ export class ConsensusEngine {
       data: options.data,
       votes: new Map<string, ConsensusVote>(),
       status: 'open',
-      quorum: options.quorum || 2,
+      quorum,
+      ...(options.strategy ? { strategy: options.strategy, voters: options.voters } : {}),
       createdAt: Date.now(),
       expiresAt: Date.now() + timeoutMs,
     };
@@ -78,6 +89,10 @@ export class ConsensusEngine {
       return proposal;
     }
 
+    if (proposal.voters !== undefined && !proposal.votes.has(vote.voterId) && proposal.votes.size >= proposal.voters) {
+      throw new Error(`Proposal '${proposalId}' already has votes from all ${proposal.voters} eligible voters`);
+    }
+
     proposal.votes.set(vote.voterId, {
       voterId: vote.voterId,
       approve: vote.approve,
@@ -112,7 +127,11 @@ export class ConsensusEngine {
         approvals: approvals.length,
         weightedApproval: totalWeightedApproval,
       });
-    } else if (rejections.length > votes.length / 2 && votes.length >= proposal.quorum) {
+    } else if (
+      proposal.voters !== undefined
+        ? !canStillReach(approvals.length, rejections.length, proposal.voters, proposal.quorum)
+        : rejections.length > votes.length / 2 && votes.length >= proposal.quorum
+    ) {
       proposal.status = 'rejected';
       this.messageBus.publish('consensus:proposal_rejected', 'consensus_engine', {
         proposalId: proposal.id,

@@ -3,6 +3,8 @@ import { parseArgs } from 'node:util';
 import { BUILTIN_AGENT_PROFILES } from '../agents/agent-profiles.js';
 import type { AgentRole, ColonyMember, ColonyTask, TaskPriority } from '../types.js';
 import { ColonySession, loadRules, resolveRevision } from './session.js';
+import { QUORUM_STRATEGIES, QuorumStrategy } from '../consensus/strategies.js';
+import { buildTopology, isFullyConnected, shortestPath, TOPOLOGY_TYPES, TopologyType } from '../topology.js';
 
 export interface CommandResult {
   code: number;
@@ -28,7 +30,8 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   next --as <role|memberId>               take the next task for that role (with memory context)
   done <taskId> --result <text>           complete a task; a real, non-empty result is required
   fail <taskId> --error <text>            mark a task failed
-  propose <taskId> <topic> --as <member>  [--quorum N] [--timeout-min M] [--data text]
+  propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous] [--timeout-min M] [--data text]
+  topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
   vote <proposalId> --as <member> (--approve|--reject) --reason <text> [--confidence 0..1]
   memory add <text>                       [--ns NAMESPACE]
   memory search <query>                   [--k N] [--ns NAMESPACE]
@@ -79,6 +82,12 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         priority: { type: 'string' },
         consensus: { type: 'string' },
         quorum: { type: 'string' },
+        strategy: { type: 'string' },
+        type: { type: 'string' },
+        fanout: { type: 'string' },
+        degree: { type: 'string' },
+        from: { type: 'string' },
+        to: { type: 'string' },
         'timeout-min': { type: 'string' },
         data: { type: 'string' },
         result: { type: 'string' },
@@ -145,6 +154,22 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         tasks: tasks.map(summarizeTask),
         openProposals: hub.consensus.listProposals().filter((p) => p.status === 'open').map(serializeProposal),
       });
+    }
+
+    case 'topology': {
+      const type = (values.type ?? 'star') as TopologyType;
+      if (!TOPOLOGY_TYPES.includes(type)) throw new CliError(`unknown topology '${values.type}' (use ${TOPOLOGY_TYPES.join(', ')})`);
+      const fanout = values.fanout ? Number(values.fanout) : undefined;
+      const degree = values.degree ? Number(values.degree) : undefined;
+      if (fanout !== undefined && (!Number.isInteger(fanout) || fanout < 1)) throw new CliError('--fanout must be a positive integer');
+      if (degree !== undefined && (!Number.isInteger(degree) || degree < 1)) throw new CliError('--degree must be a positive integer');
+
+      const topology = buildTopology(hub.registry.getAllMembers(), type, { fanout, meshDegree: degree });
+      if (values.from || values.to) {
+        if (!values.from || !values.to) throw new CliError('--from and --to go together');
+        return reply({ topology, path: shortestPath(topology, values.from, values.to) });
+      }
+      return reply({ topology, connected: isFullyConnected(topology) });
     }
 
     case 'task': {
@@ -238,10 +263,17 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       if (!task) throw new CliError(`task '${sub ?? ''}' not found`);
       if (!topic) throw new CliError('propose needs a topic');
       const [proposer] = resolveMembers(session, values.as);
-      const quorum = values.quorum ? Number(values.quorum) : task.minConsensusQuorum;
+      const strategy = values.strategy as QuorumStrategy | undefined;
+      if (strategy !== undefined && !QUORUM_STRATEGIES.includes(strategy)) {
+        throw new CliError(`unknown strategy '${strategy}' (use ${QUORUM_STRATEGIES.join(', ')})`);
+      }
+      if (strategy && values.quorum) throw new CliError('pass either --quorum or --strategy, not both');
+      const quorum = values.quorum ? Number(values.quorum) : strategy ? undefined : task.minConsensusQuorum;
       const timeoutMin = values['timeout-min'] ? Number(values['timeout-min']) : 60;
       if (quorum !== undefined && (!Number.isInteger(quorum) || quorum < 1)) throw new CliError('--quorum must be a positive integer');
       if (!(timeoutMin > 0)) throw new CliError('--timeout-min must be positive');
+      // Eligible voters: every member that is neither offline nor in error.
+      const voters = hub.registry.getAllMembers().filter((m) => m.status !== 'offline' && m.status !== 'error').length;
 
       const proposal = await hub.consensus.submitProposal({
         taskId: task.id,
@@ -249,6 +281,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         topic,
         data: values.data ?? null,
         quorum,
+        strategy,
+        voters: strategy ? voters : undefined,
         timeoutMs: timeoutMin * 60_000,
       });
       await hub.orchestrator.updateTaskProgress(task.id, proposer.id, 'consensus');

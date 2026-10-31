@@ -87,6 +87,9 @@ export interface ConsensusProposal<T = unknown> {
   votes: Map<string, ConsensusVote>;
   status: 'open' | 'approved' | 'rejected' | 'timeout';
   quorum: number;
+  /** Set when the quorum was derived from a strategy: the number of eligible voters. */
+  voters?: number;
+  strategy?: string;
   createdAt: number;
   expiresAt: number;
 }

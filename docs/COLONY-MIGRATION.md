@@ -60,6 +60,15 @@ A [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md) C listája törölve: 5552 fájl (8
 
 Az A lista csomagjai a törlés előtt ellenőrizve: egyik sem függött a törölt csomagoktól. A Colony build és mind a 30 teszt zöld.
 
+## Átépítés, 4. szakasz: az A lista átvétele (folyamatban)
+
+| Csomag | Állapot |
+|---|---|
+| `swarm` | **Részben átvéve:** topológia (`topology.ts`), kvórum-stratégiák (`consensus/strategies.ts`), CLI: `topology` és `propose --strategy`. A nagy koordinátorokat (queen, unified, attention, worker-dispatch, federation-hub) még át kell nézni. A részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
+| `claims`, `memory`, `guidance`, `security`, `shared`, `neural`, `aidefence`, `plugin-agent-federation`, `performance` | Még nem kezdtük el. |
+
+49 teszt zöld.
+
 ## Még hátra
 
 | Terület (`legacy/ruflo/` alatt) | Megjegyzés |

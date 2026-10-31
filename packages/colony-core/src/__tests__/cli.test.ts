@@ -148,6 +148,48 @@ test('a consensus task cannot be completed before its proposal is approved', asy
   assert.equal(done.code, 0);
 });
 
+test('propose --strategy derives the quorum from the active members and validates its input', async () => {
+  const run = await project('strategy');
+  await run('boot');
+  const id = (await run('task', 'add', 'Risky', 'needs review', '--role', 'engineer', '--consensus', '2')).out.task.id;
+  await run('next', '--as', 'engineer');
+
+  assert.match((await run('propose', id, 't', '--as', 'engineer', '--strategy', 'gut-feeling')).out.error, /unknown strategy/);
+  assert.match((await run('propose', id, 't', '--as', 'engineer', '--strategy', 'majority', '--quorum', '2')).out.error, /not both/);
+
+  const byz = await run('propose', id, 'ship it?', '--as', 'engineer', '--strategy', 'byzantine');
+  assert.equal(byz.out.proposal.voters, 6);
+  assert.equal(byz.out.proposal.quorum, 4); // f = 1 for six voters, quorum floor(7 / 2) + 1
+
+  const maj = (await run('propose', id, 'again?', '--as', 'engineer', '--strategy', 'majority')).out.proposal;
+  assert.equal(maj.quorum, 4);
+  for (const who of ['reviewer', 'tester', 'security']) {
+    await run('vote', maj.id, '--as', who, '--approve', '--reason', 'checked');
+  }
+  const last = await run('vote', maj.id, '--as', 'architect', '--approve', '--reason', 'design fits');
+  assert.equal(last.out.proposal.status, 'approved');
+  assert.equal((await run('done', id, '--result', 'shipped')).code, 0);
+});
+
+test('topology prints the graph, finds paths and validates its options', async () => {
+  const run = await project('topology');
+  await run('boot');
+
+  const star = await run('topology');
+  assert.equal(star.out.topology.leader, 'member_director');
+  assert.equal(star.out.topology.edges.length, 5);
+  assert.equal(star.out.connected, true);
+
+  const tree = await run('topology', '--type', 'tree', '--fanout', '2', '--from', 'member_security', '--to', 'member_tester');
+  assert.equal(tree.out.path[0], 'member_security');
+  assert.equal(tree.out.path.at(-1), 'member_tester');
+  assert.ok(tree.out.path.length >= 2);
+
+  assert.match((await run('topology', '--type', 'ring')).out.error, /unknown topology/);
+  assert.equal((await run('topology', '--fanout', '0')).code, 1);
+  assert.match((await run('topology', '--from', 'member_tester')).out.error, /go together/);
+});
+
 test('fail requires an error text and frees the member', async () => {
   const run = await project('fail');
   await run('boot');

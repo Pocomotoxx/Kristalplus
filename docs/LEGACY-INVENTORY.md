@@ -51,6 +51,24 @@ Szempont: a Colony host-vezérelt, nincs benne modellszolgáltató, hálózati h
 
 **Egyéb:** a Claude/Codex-konfiguráció (`.claude/`, `.agents/`, `.claude-plugin/`, `plugin/`, `chatgpt-plugin/`, a gyökér `CLAUDE.md` és `AGENTS.md`), a `ruflo/` csomag (529 forrásfájl, a Ruflo CLI burkolója), a `v3/goal_ui`, `v3/implementation` és a `v3/docs`.
 
+## Átvételi napló
+
+### `swarm` (részben átvéve)
+
+Átírva, nem másolva: a régi kód EventEmitter-re, időzítőkre és `Math.random()`-ra épül, a Colony pedig determinisztikus.
+
+| Régi elem | Mi lett belőle |
+|---|---|
+| `topology-manager.ts` (634 sor): mesh, hierarchical, centralized, hybrid | `topology.ts`: `mesh`, `star`, `tree`, `hybrid`. Tiszta függvények, véletlen és időzítő nélkül, vezetőválasztás, szomszédok, legrövidebb út. A CLI-ben a `topology` parancs. |
+| `consensus/raft.ts`, `byzantine.ts`: kvórumszámítás | `consensus/strategies.ts`: `majority`, `supermajority`, `byzantine`, `unanimous`. A `ConsensusEngine` stratégiából is tud kvórumot számolni, és azonnal elutasít, ha a kvórum elérhetetlen. A CLI-ben `propose --strategy`. |
+
+Amit **nem** vettem át:
+- **Raft-, gossip- és Byzantine-üzenetprotokoll, transport** (`raft.ts`, `gossip.ts`, `transport.ts`, `federation-transport.ts`): hálózati replikáció időzítőkkel és véletlennel. A Colonynak egyetlen főkönyve van, ezért csak a döntési szabályok kellettek.
+- **Eltérés a régi kódtól:** a régi Raft (`raft.ts`, `checkConsensus`) a kvórumot `floor(szavazók × küszöb)` képlettel számolta. A 0,66-os alapértelmezett tartalékküszöbbel ez 3 szavazónál 1, tehát egyetlen igen elég lett volna. (A konstruktor egy másik alapértelmezést is átadhat, azt nem néztem meg.) Az új `supermajority` szabály `ceil(2n / 3)`, ami 3 szavazónál 2.
+- **`queen-coordinator.ts` (1775 sor), `unified-coordinator.ts` (1822), `attention-coordinator.ts` (850), `worker-dispatch.ts` (1011), `federation-hub.ts` (863), `agent-pool.ts`, `message-bus.ts`, `domain/`, `application/`:** ezeket nem olvastam át. A nevük és méretük alapján nagyrészt a `ColonyHub`, a nyilvántartás és az eseménybusz funkcióit duplikálják. Átvétel előtt át kell nézni, van-e bennük olyan, ami a Colonyból hiányzik.
+
+A `legacy/ruflo/v3/@claude-flow/swarm` mappa ezért még nem törölhető.
+
 ## Teendők, ha elfogadod
 
 1. A **C** lista törlése egy külön commitban (a git-előzményben megmarad).

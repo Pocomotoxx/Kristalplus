@@ -3,6 +3,8 @@ export * from './message-bus.js';
 export * from './coordination/colony-registry.js';
 export * from './coordination/colony-task-orchestrator.js';
 export * from './consensus/consensus-engine.js';
+export * from './consensus/strategies.js';
+export * from './topology.js';
 export * from './colony-hub.js';
 
 // Memory & Vector Codex
