@@ -1,0 +1,33 @@
+{
+  "name": "kristal-colony",
+  "version": "1.0.0",
+  "description": "Enterprise autonomous AI agent Colony orchestration and model-agnostic memory engine",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "kristal-colony": "dist/github-runner.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/**/*.test.js",
+    "dev": "tsx src/index.ts",
+    "runner": "node dist/github-runner.js"
+  },
+  "keywords": [
+    "agent-colony",
+    "orchestrator",
+    "consensus",
+    "vector-memory",
+    "typescript",
+    "esm",
+    "github-actions"
+  ],
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.4"
+  }
+}
