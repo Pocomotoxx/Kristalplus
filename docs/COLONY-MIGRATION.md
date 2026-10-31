@@ -29,23 +29,31 @@ Nincs API-kulcs: a host (Cowork) maga a modell, a mag csak főkönyv. Ehhez kés
 
 Következmény: a `llm/providers.ts`, a `ColonyWorker` (saját végrehajtás) és a `github-runner` + workflow a host-vezérelt úton nem kell. Döntés kell: kivezetés vagy opcionális marad.
 
-## Még Ruflo (átírandó vagy kivezetendő)
+## Átépítés, 1. szakasz: a Ruflo-kód félretétele (kész)
 
-| Terület | Megjegyzés |
+A teljes Ruflo-kód (8316 fájl) a `legacy/ruflo/` alá került `git`-átnevezésként, tartalmi változtatás nélkül, a fájlok előzménye követhető. Ezzel:
+- a gyökér tiszta Colony-azonosságot kapott: új `package.json` (`pnpm build` és `pnpm test` a `colony-core`-ra), új `.gitignore`, rövid `AGENTS.md`, `START_HERE.md`, `README.md`;
+- a régi `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.agents/` és `.githooks/` nem töltődik be a gyökérből indított hostokon;
+- a 36 régi workflow `legacy/ruflo/.github/workflows/` alatt van, és nem fut. Az egyetlen aktív workflow a `kristal-colony-runner.yml`;
+- a `colony-core` változatlan, és nem hivatkozik a régi kódra.
+
+A visszaállítás egyszerű: a `legacy/ruflo/` tartalma visszamozgatható a gyökérbe.
+
+## Még hátra
+
+| Terület (`legacy/ruflo/` alatt) | Megjegyzés |
 |---|---|
-| `v3/@claude-flow/*` | A Ruflo CLI, MCP, biztonsági és codex csomagjai. A „swarm” szó kb. 2000 fájlban szerepel. |
-| `plugins/ruflo-*` | 40+ plugin. Döntés kell, melyik kell a Colonyban. |
+| `v3/@claude-flow/*` | A Ruflo CLI, MCP, biztonsági és codex csomagjai (4247 fájl). A „swarm” szó kb. 2000 fájlban szerepel. |
+| `plugins/ruflo-*` | 40+ plugin (2245 fájl). Döntés kell, melyik kell a Colonyban. |
 | `ruflo/`, `plugin/` | A Ruflo csomag és a Claude Code plugin. |
-| gyökér `package.json`, `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md` | Még `claude-flow` 3.65.0 azonosság. |
-| `.claude*`, `.agents`, `.harness`, `.githooks` | Claude/Codex-specifikus konfiguráció. |
+| `.claude/`, `.agents/`, `.harness/` | Claude/Codex-specifikus konfiguráció. |
 | `Cargo.toml`, `crates/` | Rust federációs rész. |
+| `CLAUDE.local.md` | Személyes, helyi beállításfájl, amely nem való a repóba. Törlendő vagy átnézendő. |
 
-## Javasolt sorrend
+## Javasolt sorrend a folytatáshoz
 
-1. **Tesztek bővítése** (az alapok kész): `ColonyHub`, `ColonyWorker`, szolgáltatók (mockolt `fetch`-csel), `FileVectorStore`, `moe-router`, `reasoning-bank`.
-2. **A plant.md hiányzó fázisai** (V., VI.) pontosítása. Kód nincs hozzájuk.
-3. **Plugin-leltár:** minden `ruflo-*` pluginra döntés: átvesz / újraír / kivezet.
-4. **Gyökér átnevezése:** új gyökér `package.json` (workspace a `packages/*`-ra), `AGENTS.md` és `CLAUDE.md` újraírása Colony-szemlélettel.
-5. **Ruflo-kód mozgatása** `legacy/` alá, majd a kivezetett részek törlése. Ez a lépés a repó nagy részét érinti, ezért külön, felülvizsgált commitban megy.
-6. **Licenc és eredet:** a megmaradó átvett kód jelölése, a nem megmaradó kivezetése.
-7. **Runner biztonság:** a workflow `contents: write` joggal fut issue-kommentre, ezért korlátozni kell, kik indíthatják (pl. `author_association`).
+1. **Plugin- és csomagleltár:** minden `ruflo-*` pluginra és `@claude-flow/*` csomagra döntés: átvesz / újraír / kivezet. A kivezetettek törlése.
+2. **Licenc és eredet:** az eredeti `LICENSE` és a szerzői jogi nyilatkozat beszerzése a forrásprojektből. A megmaradó átvett kód jelölése.
+3. **Tesztek bővítése:** `ColonyHub`, `ColonyWorker`, szolgáltatók (mockolt `fetch`-csel), `FileVectorStore`, `moe-router`, `reasoning-bank`.
+4. **A plant.md hiányzó fázisai** (V., VI.) pontosítása. Kód nincs hozzájuk.
+5. **Runner és szolgáltatók sorsa:** kivezetés vagy opcionális marad. A workflow `contents: write` joggal fut issue-kommentre, ezért legalább korlátozni kell, kik indíthatják (pl. `author_association`).
