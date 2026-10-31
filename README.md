@@ -27,6 +27,7 @@ A korábbi „raj” (swarm) helyett mindenhol **kolónia** (colony) a terminol�
 - **Tanulás:** MoE-router és Reasoning Bank, amely a korábbi tapasztalatokat visszatáplálja.
 - **Host-vezérelt működés:** a `colony` parancssori eszköz JSON-t ír ki, így bármelyik host használhatja. A magnak nincs szüksége modellszolgáltatóra.
 - **Boot:** a `colony boot` betölti és ellenőrzi az állapotfájlokat és a szabályfájlokat, feloldja a git-revíziót, és állapotot jelent (`LOADED`, `UNVERIFIABLE`, `BLOCKED`). Boot nélkül a munkaparancsok nem futnak.
+- **Auditnapló:** minden változtatás hash-láncolt bejegyzés (SHA-256, aggregátumonként verzió). Szabad szöveg (eredmény, hibaszöveg, ellenőrzött parancs) nem kerül bele, csak a hossza vagy a döntés. Korlát: nincs aláírás, aki az egész fájlt átírja és újraszámolja a hash-eket, érvényes láncot kap. A boot rögzíti a napló végét, a következő boot ezzel fogja meg a levágást vagy az átírást; ez csak a két boot közti időre igaz.
 - **Biztonság:** a fájlutak feloldott (symlink/junction követő) tartalmazás-ellenőrzéssel mennek át (`safe-path.ts`: szabályfájlok, `check --file`), a git-hívások nem hagyják, hogy a vizsgált repó saját parancsot futtasson (`core.fsmonitor`, `safe-git.ts`).
 - **Nincs LLM-függés:** a magban nincs modellszolgáltató, hálózati hívás, API-kulcs vagy környezeti változó. A memória beágyazása helyi és determinisztikus.
 
@@ -69,6 +70,7 @@ node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres ere
 | `claim steal <feladat> --as <tag>` | Stealable foglalás átvétele a türelmi idő (10 perc) után, a tag kapacitásán belül. A feladat új gazdát kap. |
 | `claim handoff <feladat> --as <tag> --to <tag> --reason <szöveg>`, `claim accept\|reject <feladat> --as <tag>` | Átadás: a címzett elfogadja vagy bármelyik fél elutasítja. |
 | `check` | Kapuk, **mielőtt** a host cselekszik: `--command` (romboló parancs, titok), `--text`, `--file` (titokkeresés, `--diff-lines`, `--threshold`), `--tool` + `--allow` (eszköz-engedélylista). Döntés: `allow`, `warn`, `require-confirmation`, `block` (kilépési kód 3). A talált titkot soha nem írja ki. |
+| `audit list\|verify` | A `.colony/audit.jsonl` hash-láncolt napló: ki mit tett (feladat, foglalás, szavazat, kapu-döntés). A `verify` a láncot és azt ellenőrzi, hogy a napló még tartalmazza az utolsó bootkor rögzített bejegyzést. |
 | `vote <javaslat> --as <tag> --approve\|--reject --reason <szöveg>` | Szavaz (`--confidence 0..1`). Indoklás kötelező. |
 | `memory add\|search` | Kézi memóriaírás és -keresés (`--ns`, `--k`). |
 
@@ -102,7 +104,7 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 
 ## Ismert hiányok
 
-- A `colony-core` tesztjei (`pnpm test`, 98 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
+- A `colony-core` tesztjei (`pnpm test`, 110 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
 - A szabályok csak kötelező készletből állnak, és mind a bootban töltődnek be. Feladathoz kötött szabálybetöltésre (útválasztóra) szándékosan nincs szükség.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
 - A beépített tagok (6 szerep) fixek, a CLI-ből nem lehet újat felvenni.

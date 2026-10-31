@@ -3,6 +3,7 @@ import { ColonyRegistry } from './coordination/colony-registry.js';
 import { ColonyTaskOrchestrator, CreateTaskOptions } from './coordination/colony-task-orchestrator.js';
 import { ConsensusEngine } from './consensus/consensus-engine.js';
 import { ClaimLedger } from './coordination/claim-ledger.js';
+import { AuditLog } from './audit-log.js';
 import { VectorCodex } from './memory/vector-codex.js';
 import { MoERouter, RouteDecision } from './neural/moe-router.js';
 import { ReasoningBank } from './neural/reasoning-bank.js';
@@ -24,6 +25,7 @@ export class ColonyHub {
   public readonly orchestrator: ColonyTaskOrchestrator;
   public readonly consensus: ConsensusEngine;
   public readonly claims: ClaimLedger;
+  public readonly audit: AuditLog;
   public readonly codex: VectorCodex;
   public readonly router: MoERouter;
   public readonly reasoningBank: ReasoningBank;
@@ -35,6 +37,7 @@ export class ColonyHub {
     this.orchestrator = new ColonyTaskOrchestrator(this.registry, this.bus);
     this.consensus = new ConsensusEngine(this.bus);
     this.claims = new ClaimLedger();
+    this.audit = new AuditLog();
     this.codex = config.codex || new VectorCodex();
     this.router = new MoERouter();
     this.reasoningBank = new ReasoningBank(this.codex);

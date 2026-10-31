@@ -135,6 +135,27 @@ Amit **nem** vettem át és még át kell nézni: `safe-executor`, `input-valida
 
 A `legacy/ruflo/v3/@claude-flow/security` mappa ezért még nem törölhető.
 
+### `shared` (részben átvéve)
+
+A csomag egy gyűjtőfiók (kb. 23 700 sor: MCP-szerver, hookok, bővítmény-betöltő, eseménytár, ellenálló réteg). Olvasott forrás: az `events/event-store.ts` első 330 sora. A többi **nincs** átnézve.
+
+Átvett ötlet: a csak hozzáfűzhető eseménynapló, aggregátumonkénti verzióval. Átírva: `audit-log.ts`.
+
+| Régi elem | Mi lett belőle |
+|---|---|
+| SQLite (sql.js, WASM) eseménytár, időzített mentés, EventEmitter | Egyszerű JSONL-fájl (`.colony/audit.jsonl`), mentés a parancs végén, nincs időzítő. |
+| Verzió aggregátumonként | Megvan (`version`), és az ellenőrzés a hibás verziót is elfogja. |
+| (nem volt) | **Hash-lánc**: minden bejegyzés a saját és az előző SHA-256-ját viseli. A boot rögzíti a napló végét, a következő boot ellenőrzi, hogy a napló még tartalmazza. |
+
+Korlátok, nyíltan:
+- Nincs aláírás. Aki a fájlt átírja és minden hash-t újraszámol, érvényes láncot kap. A rögzített napló-vég (horgony) csak a két boot közötti átírást vagy levágást fogja meg.
+- A napló nem bizonyítja, hogy a hostok tényleg azt tették, amit a parancsaikban mondtak. Azt rögzíti, mit kértek a Colonytól.
+- A szabad szöveg (eredmény, hibaszöveg, ellenőrzött parancs) szándékosan nincs benne, mert titkot tartalmazhat.
+
+Amit **nem** vettem át: `projections`, `state-reconstructor` (események visszajátszása állapottá; a Colony állapota pillanatkép), `rvf-event-log`, az MCP-szerver és -átvitelek, a hookrendszer, a bővítmény-betöltő, a megszakító és sebességkorlátozó (`resilience/`, hálózatra), a konfigbetöltő.
+
+A `legacy/ruflo/v3/@claude-flow/shared` mappa ezért még nem törölhető.
+
 ## Teendők, ha elfogadod
 
 1. A **C** lista törlése egy külön commitban (a git-előzményben megmarad).

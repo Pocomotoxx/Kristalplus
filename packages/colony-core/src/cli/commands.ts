@@ -38,7 +38,9 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
   check                                   run gates BEFORE acting: [--command TEXT] [--text TEXT] [--file PATH [--diff-lines N] [--threshold N]]
                                           [--tool NAME --allow a,b*]; exit 3 on "block". A gate is a check you call, not an interceptor.
-  claim list | sweep                    who holds which task; sweep marks stale or long-blocked claims stealable
+  audit list [--task id] [--type t] [--k N]   the hash-chained log of what was done, by whom
+  audit verify                            check the chain and that the log still holds the entry anchored at the last boot
+  claim list | sweep                  who holds which task; sweep marks stale or long-blocked claims stealable
   claim heartbeat <taskId> --as <member>  [--progress 0..100]   show life; takes a stealable claim back
   claim block <taskId> --as <member> --reason <text> | claim unblock <taskId> --as <member>
   claim release <taskId> --as <member>    give the task up (anyone may take it over at once)
@@ -111,6 +113,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         text: { type: 'string' },
         file: { type: 'string' },
         tool: { type: 'string' },
+        task: { type: 'string' },
         allow: { type: 'string' },
         'diff-lines': { type: 'string' },
         threshold: { type: 'string' },
@@ -163,6 +166,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
 
   const session = await ColonySession.open(dir);
   const { hub } = session;
+  const log = (type: string, aggregateId: string, payload: Record<string, unknown> = {}) =>
+    hub.audit.append({ type, aggregateId, actor: values.as ?? 'host', payload }, Date.now());
   const reply = (output: Record<string, unknown>): CommandResult => ({ code: 0, output: { ok: true, ...output, ...(warnings.length ? { warnings } : {}) } });
 
   switch (command) {
@@ -214,6 +219,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         consensusRequired: quorum !== undefined,
         minConsensusQuorum: quorum,
       });
+      log('task.added', task.id, { title, requiredRole: task.requiredRole, priority: task.priority, dependencies });
       await session.save();
       return reply({ task: summarizeTask(task), requiredRole: task.requiredRole, routed: routeDecision ? true : false });
     }
@@ -239,7 +245,10 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         return reply({ task: null, reason: 'no task is assigned to this role right now' });
       }
       const member = hub.registry.getMember(task.assignedAgentId!)!;
-      if (task.status === 'assigned') await hub.orchestrator.updateTaskProgress(task.id, member.id, 'in_progress');
+      if (task.status === 'assigned') {
+        await hub.orchestrator.updateTaskProgress(task.id, member.id, 'in_progress');
+        log('task.started', task.id, { memberId: member.id });
+      }
       const open = hub.claims.get(task.id);
       if (open && open.status !== 'closed' && open.holderId === member.id) hub.claims.heartbeat(task.id, member.id, Date.now());
       else if (!open || open.status === 'closed') hub.claims.claim(task.id, member.id, Date.now());
@@ -266,6 +275,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         if (!values.error?.trim()) throw new CliError('--error <text> is required');
         await hub.orchestrator.failTask(task.id, agentId, values.error);
         hub.claims.close(task.id, 'failed', agentId, Date.now());
+        log('task.failed', task.id, { memberId: agentId, errorChars: values.error.length });
         await session.save();
         return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!) });
       }
@@ -277,6 +287,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const before = new Map(hub.orchestrator.getAllTasks().map((t) => [t.id, t.status]));
       await hub.orchestrator.completeTask(task.id, agentId, values.result);
       hub.claims.close(task.id, 'completed', agentId, Date.now());
+      log('task.completed', task.id, { memberId: agentId, resultChars: values.result.length });
       const unblocked = hub.orchestrator.getAllTasks().filter((t) => before.get(t.id) === 'pending' && t.status === 'assigned');
       await session.save();
       return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!), unblocked: unblocked.map(summarizeTask) });
@@ -320,8 +331,33 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         add(checkToolAllowed(values.tool, allow));
       }
       const decision = aggregateDecision(results);
+      // Only the verdict is logged: the checked text may itself hold a secret.
+      log('check', 'check', { decision, gates: results.map((r) => r.gate) });
+      await session.save();
       const output = { ok: decision !== 'block', decision, results, ...(warnings.length ? { warnings } : {}) };
       return { code: decision === 'block' ? 3 : 0, output };
+    }
+
+    case 'audit': {
+      if (sub === 'verify') {
+        const chain = hub.audit.verify();
+        const anchor = boot.audit;
+        const anchored = anchor ? hub.audit.contains(anchor) : null;
+        const ok = chain.ok && anchored !== false;
+        return {
+          code: ok ? 0 : 2,
+          output: {
+            ok,
+            chain,
+            sinceBoot: anchor ? { anchoredEntries: anchor.entries, stillHeld: anchored } : null,
+            note: 'The hash chain has no signature: it detects edits, not a rewrite that recomputes every hash. The boot anchor catches cuts and rewrites since the last boot.',
+          },
+        };
+      }
+      if (sub !== 'list') throw new CliError('usage: audit list [--task id] [--type t] [--k N] | audit verify');
+      const k = values.k ? Number(values.k) : 20;
+      if (!Number.isInteger(k) || k < 0) throw new CliError('--k must be a non-negative integer');
+      return reply({ total: hub.audit.length, entries: hub.audit.list({ aggregateId: values.task, type: values.type, limit: k }) });
     }
 
     case 'claim': {
@@ -340,6 +376,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
 
           case 'sweep': {
             const changed = hub.claims.sweep(now);
+            for (const c of changed) log('claim.stealable', c.taskId, { holderId: c.holderId, reason: c.stealableReason });
             await session.save();
             return reply({ markedStealable: changed.map((c) => ({ taskId: c.taskId, holderId: c.holderId, reason: c.stealableReason, graceEndsAt: c.graceEndsAt })) });
           }
@@ -349,6 +386,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
             const [member] = resolveMembers(session, values.as);
             const progress = values.progress === undefined ? undefined : Number(values.progress);
             const claim = hub.claims.heartbeat(taskId, member.id, now, progress);
+            log('claim.heartbeat', taskId, { memberId: member.id, progress: claim.progress, status: claim.status });
             await session.save();
             return reply({ claim });
           }
@@ -357,6 +395,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
             needTask();
             const [member] = resolveMembers(session, values.as);
             const claim = hub.claims.block(taskId, member.id, values.reason ?? '', now);
+            log('claim.blocked', taskId, { memberId: member.id });
             await session.save();
             return reply({ claim });
           }
@@ -365,6 +404,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
             needTask();
             const [member] = resolveMembers(session, values.as);
             const claim = hub.claims.unblock(taskId, member.id, now);
+            log('claim.unblocked', taskId, { memberId: member.id });
             await session.save();
             return reply({ claim });
           }
@@ -373,6 +413,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
             needTask();
             const [member] = resolveMembers(session, values.as);
             const claim = hub.claims.release(taskId, member.id, now);
+            log('claim.released', taskId, { memberId: member.id });
             await session.save();
             return reply({ claim });
           }
@@ -385,6 +426,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
               maxClaims: capacityOf(member).max,
             });
             await hub.orchestrator.reassignTask(taskId, member.id);
+            log('claim.stolen', taskId, { from: previousHolderId, to: member.id, previousProgress });
             await session.save();
             return reply({ claim, previousHolderId, previousProgress });
           }
@@ -398,6 +440,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
               targetOpenClaims: capacityOf(target).open,
               maxClaims: capacityOf(target).max,
             });
+            log('claim.handoff_requested', taskId, { from: from.id, to: target.id });
             await session.save();
             return reply({ claim });
           }
@@ -407,6 +450,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
             const [member] = resolveMembers(session, values.as);
             const claim = hub.claims.acceptHandoff(taskId, member.id, now);
             await hub.orchestrator.reassignTask(taskId, member.id);
+            log('claim.handoff_accepted', taskId, { memberId: member.id });
             await session.save();
             return reply({ claim });
           }
@@ -415,6 +459,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
             needTask();
             const [member] = resolveMembers(session, values.as);
             const claim = hub.claims.rejectHandoff(taskId, member.id, now);
+            log('claim.handoff_rejected', taskId, { memberId: member.id });
             await session.save();
             return reply({ claim });
           }
@@ -457,6 +502,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         timeoutMs: timeoutMin * 60_000,
       });
       await hub.orchestrator.updateTaskProgress(task.id, proposer.id, 'consensus');
+      log('proposal.created', proposal.id, { taskId: task.id, proposerId: proposer.id, quorum: proposal.quorum, strategy: strategy ?? null });
       await session.save();
       return reply({ proposal: serializeProposal(proposal) });
     }
@@ -469,6 +515,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       if (!sub) throw new CliError('usage: vote <proposalId> --as <member> ...');
       const [voter] = resolveMembers(session, values.as);
       const proposal = await hub.consensus.castVote(sub, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason: values.reason });
+      log('proposal.vote', proposal.id, { voterId: voter.id, approve: Boolean(values.approve), confidence, status: proposal.status });
       await session.save();
       return reply({ proposal: serializeProposal(proposal) });
     }

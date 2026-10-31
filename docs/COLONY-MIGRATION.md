@@ -69,9 +69,10 @@ Az A lista csomagjai a törlés előtt ellenőrizve: egyik sem függött a tör�
 | `memory` | **Részben átvéve:** `memory/hnsw-index.ts` (determinisztikus HNSW), a `FileVectorStore` használja. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `guidance` | **Részben átvéve:** `gates.ts` (kapuk) és a `check` parancs. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `security` | **Részben átvéve:** `safe-path.ts` (útvonal-tartalmazás symlinkkel), `safe-git.ts`. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
-| `shared`, `neural`, `aidefence`, `plugin-agent-federation`, `performance` | Még nem kezdtük el. |
+| `shared` | **Részben átvéve:** `audit-log.ts` (hash-láncolt, csak hozzáfűzhető napló), `audit` parancs. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
+| `neural`, `aidefence`, `plugin-agent-federation`, `performance` | Még nem kezdtük el. |
 
-98 teszt zöld.
+110 teszt zöld.
 
 ## Még hátra
 

@@ -9,6 +9,7 @@ import { FileVectorStore } from '../memory/file-vector-store.js';
 import { BUILTIN_AGENT_PROFILES } from '../agents/agent-profiles.js';
 import type { SerializedProposal } from '../consensus/consensus-engine.js';
 import type { Claim } from '../coordination/claim-ledger.js';
+import type { AuditAnchor, AuditEntry } from '../audit-log.js';
 import type { ColonyMember, ColonyTask } from '../types.js';
 import { DEFAULT_MANIFEST, DEFAULT_RULES } from './default-rules.js';
 
@@ -16,6 +17,7 @@ export const STATE_DIR = '.colony';
 const RULES_DIR = 'rules';
 const MANIFEST_FILE = 'manifest.json';
 const LEDGER_FILE = 'ledger.json';
+const AUDIT_FILE = 'audit.jsonl';
 const MEMORY_FILE = 'memory.json';
 const BOOT_FILE = 'boot.json';
 
@@ -38,6 +40,8 @@ export interface BootRecord {
   evidence: Array<{ path: string; sha256: string; bytes: number }>;
   rules: Array<{ path: string; sha256: string; bytes: number }>;
   problems: string[];
+  /** Head of the audit log when this boot finished; the next boot checks the log still holds it. */
+  audit?: AuditAnchor;
 }
 
 export interface LoadedRule {
@@ -142,6 +146,9 @@ const sha256 = (text: string): string => createHash('sha256').update(text).diges
  * The host (an LLM or a human) drives the colony through it; the session never calls a model.
  */
 export class ColonySession {
+  /** How many audit entries are already on disk. */
+  private auditPersisted = 0;
+
   private constructor(
     public readonly dir: string,
     public readonly hub: ColonyHub
@@ -177,7 +184,23 @@ export class ColonySession {
       throw new Error(`${MEMORY_FILE} must be a JSON array`);
     }
 
-    return new ColonySession(dir, hub);
+    const session = new ColonySession(dir, hub);
+    const auditText = await readIfExists(path.join(stateDir, AUDIT_FILE));
+    if (auditText !== null) {
+      const entries = auditText
+        .split('\n')
+        .filter((line) => line.trim())
+        .map((line, i) => {
+          try {
+            return JSON.parse(line) as AuditEntry;
+          } catch {
+            throw new Error(`${AUDIT_FILE} line ${i + 1} is not valid JSON`);
+          }
+        });
+      hub.audit.restore(entries); // throws when the hash chain is broken
+      session.auditPersisted = entries.length;
+    }
+    return session;
   }
 
   public async save(): Promise<void> {
@@ -190,6 +213,12 @@ export class ColonySession {
     };
     await fs.mkdir(this.stateDir, { recursive: true });
     await fs.writeFile(path.join(this.stateDir, LEDGER_FILE), JSON.stringify(ledger, null, 2), 'utf-8');
+
+    const fresh = this.hub.audit.snapshot().slice(this.auditPersisted);
+    if (fresh.length > 0) {
+      await fs.appendFile(path.join(this.stateDir, AUDIT_FILE), fresh.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf-8');
+      this.auditPersisted += fresh.length;
+    }
   }
 
   /** Register the built-in profiles as members when the colony has none yet. */
@@ -218,7 +247,9 @@ export class ColonySession {
     const evidence: BootRecord['evidence'] = [];
     const problems: string[] = [];
 
-    for (const file of [LEDGER_FILE, MEMORY_FILE]) {
+    const previous = await ColonySession.readBootRecord(dir).catch(() => null);
+
+    for (const file of [LEDGER_FILE, MEMORY_FILE, AUDIT_FILE]) {
       try {
         const text = await readIfExists(path.join(stateDir, file));
         if (text !== null) evidence.push({ path: `${STATE_DIR}/${file}`, sha256: sha256(text), bytes: Buffer.byteLength(text) });
@@ -234,6 +265,10 @@ export class ColonySession {
       } catch (err: any) {
         problems.push(err.message);
       }
+    }
+
+    if (session && previous?.audit && !session.hub.audit.contains(previous.audit)) {
+      problems.push(`${AUDIT_FILE}: no longer holds the entry recorded at the last boot (truncated or rewritten)`);
     }
 
     let loaded: LoadedRule[] = [];
@@ -254,6 +289,8 @@ export class ColonySession {
       evidence,
       rules: loaded.map(({ path: p, sha256: h, bytes }) => ({ path: p, sha256: h, bytes })),
       problems,
+      // A blocked boot keeps the older anchor, so the check survives it.
+      audit: session && problems.length === 0 ? session.hub.audit.anchor() : previous?.audit,
     };
 
     if (session) {
