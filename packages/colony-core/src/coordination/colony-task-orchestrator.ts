@@ -63,6 +63,17 @@ export class ColonyTaskOrchestrator {
     return Array.from(this.tasks.values());
   }
 
+  public snapshot(): ColonyTask[] {
+    return structuredClone(this.getAllTasks());
+  }
+
+  public restore(tasks: ColonyTask[]): void {
+    this.tasks.clear();
+    for (const task of structuredClone(tasks)) {
+      this.tasks.set(task.id, task);
+    }
+  }
+
   /**
    * Attempt to match a pending task with an available candidate in the Colony
    */

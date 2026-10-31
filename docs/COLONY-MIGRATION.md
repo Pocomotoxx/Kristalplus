@@ -18,6 +18,16 @@
 
 Ellenőrizve: tiszta telepítés után `pnpm build` hibátlan, és az `example.js` lefut offline módban. A `pnpm test` 15 tesztje mind zöld (busz, nyilvántartás, orchestrator, konszenzus, vektortár). Teszt még hiányzik a `ColonyHub`, `ColonyWorker`, `llm/providers`, `FileVectorStore`, `moe-router` és `reasoning-bank` modulokhoz.
 
+## Host-vezérelt irány (2026-10-31)
+
+Nincs API-kulcs: a host (Cowork) maga a modell, a mag csak főkönyv. Ehhez készült:
+- `cli/session.ts`: állapot betöltése és mentése (`.colony/ledger.json`, `.colony/memory.json`), boot (`LOADED` / `UNVERIFIABLE` / `BLOCKED`), revízió-feloldás.
+- `cli/commands.ts` és `cli.ts`: a `colony` parancs (boot, status, task, next, done, fail, propose, vote, memory).
+- `snapshot()` / `restore()` a nyilvántartásban, az orchestratorban és a konszenzusmotorban.
+- 11 CLI-teszt a teljes munkafolyamatra.
+
+Következmény: a `llm/providers.ts`, a `ColonyWorker` (saját végrehajtás) és a `github-runner` + workflow a host-vezérelt úton nem kell. Döntés kell: kivezetés vagy opcionális marad.
+
 ## Még Ruflo (átírandó vagy kivezetendő)
 
 | Terület | Megjegyzés |

@@ -1,6 +1,6 @@
 # Kristalplus – Kristal Colony
 
-Modellfüggetlen, többágenses **kolónia-orkesztrátor** TypeScriptben. A feladatokat egy kolónia dolgozói osztják fel és hajtják végre közös, vektoros memóriával, szavazásos döntéshozatallal és tanulással. Az egész GitHub Actions alól is futtatható.
+Modellfüggetlen **kolónia-mag** TypeScriptben. Nem hív LLM-et és nem kér API-kulcsot: a **host** (például a Cowork) maga a modell, a Colony pedig a főkönyve. Egy paranccsal (`colony boot`) betölti a rendszert, utána a host parancsokon keresztül dolgozik: feladatot vesz fel, kér, teljesít, szavaz, és a kolónia vektoros memóriájába ír. Az állapot a repóban él (`.colony/`).
 
 > **Állapot: átmenet alatt.** A projekt a Ruflo / Claude Flow v3 rajalapú architektúrájából indult, de már csak inspirációs alap. Az új mag a [`packages/colony-core`](packages/colony-core). A repó többi része (`v3/`, `plugins/`, `ruflo/`, `plugin/`) még a régi Ruflo-kód, és fokozatosan lesz átírva vagy kivezetve. Részletek: [docs/COLONY-MIGRATION.md](docs/COLONY-MIGRATION.md) és [plant.md](plant.md).
 
@@ -23,8 +23,9 @@ A korábbi „raj” (swarm) helyett mindenhol **kolónia** (colony) a terminol�
 - **Memória (Vector Codex):** szolgáltatófüggetlen embedding-felület, koszinusz-hasonlóságú vektortár névterekkel, fájlalapú perzisztencia a `.colony/memory.json` fájlban.
 - **Ágensek:** beépített profilok (Director, Architect, Coder, Reviewer, Tester, Security) és zod-alapú, típusbiztos eszköztár.
 - **Tanulás:** MoE-router és Reasoning Bank, amely a korábbi tapasztalatokat visszatáplálja.
-- **LLM-ek:** Google Gemini, valamint OpenAI-kompatibilis végpontok (OpenAI, OpenRouter, Ollama). API-kulcs nélkül determinisztikus offline tartalék működik.
-- **GitHub-futtató:** a `kristal-colony-runner` issue-ból, `/colony` kommentből, `colony` címkéből vagy kézzel indítható, és a megújult `.colony/` tudástárat visszacommitolja.
+- **Host-vezérelt működés:** a `colony` parancssori eszköz JSON-t ír ki, így bármelyik host használhatja. A magnak nincs szüksége modellszolgáltatóra.
+- **Boot:** a `colony boot` betölti és ellenőrzi az állapotfájlokat, feloldja a git-revíziót, és állapotot jelent (`LOADED`, `UNVERIFIABLE`, `BLOCKED`). Boot nélkül a munkaparancsok nem futnak.
+- **Opcionális, kulcsot igénylő rész (örökölt):** a `llm/providers.ts` (Gemini és OpenAI-kompatibilis végpontok) és a GitHub Actions runner. A host-vezérelt útnak nincs rájuk szüksége.
 
 ## Gyors indítás
 
@@ -35,26 +36,41 @@ cd packages/colony-core
 pnpm install
 pnpm build
 pnpm test
-node dist/example.js
 ```
 
-Egy feladat futtatása a runnerrel:
+### Munkamenet: boot, majd munka
+
+Minden parancs JSON-t ír ki. A `--dir <mappa>` a projektmappa (alapértelmezés: az aktuális mappa).
 
 ```bash
-node dist/github-runner.js "Feladat címe" "Feladat leírása"
+node dist/cli.js boot                                   # betöltés, állapot, munkaprotokoll
+node dist/cli.js task add "Cím" "Leírás" --role engineer
+node dist/cli.js next --as engineer                     # következő feladat + utasítás + memóriakontextus
+node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres eredmény kötelező
 ```
 
-A feladat környezeti változókból is megadható (`COLONY_TASK_TITLE`, `COLONY_TASK_DESC`). Az eredmény a `.colony/outputs/` mappába kerül.
-
-### Környezeti változók
-
-| Változó | Szerep |
+| Parancs | Mit csinál |
 |---|---|
-| `GEMINI_API_KEY` | Gemini szolgáltató |
-| `OPENAI_API_KEY` | OpenAI-kompatibilis szolgáltató és embedding |
-| `OPENAI_BASE_URL` | Alternatív végpont (OpenRouter, Ollama stb.) |
+| `boot` | Betölti és ellenőrzi az állapotot, beregisztrálja a beépített tagokat, kiírja a protokollt. |
+| `status` | Tagok, feladatok, nyitott javaslatok. |
+| `task add <cím> <leírás>` | Új feladat (`--role`, `--after id,id`, `--priority`, `--consensus <kvórum>`). Szerep nélkül a MoE-router választ. |
+| `next --as <szerep\|tag>` | A szerepnek kiosztott következő feladat, a szerep utasításával és a releváns memóriával. |
+| `done <id> --result <szöveg>` | Lezárja a feladatot. Konszenzusos feladatnál előbb jóváhagyott javaslat kell. A kolónia megjegyzi a megoldást. |
+| `fail <id> --error <szöveg>` | Hibásnak jelöli a feladatot. |
+| `propose <id> <téma> --as <tag>` | Szavazást indít (`--quorum`, `--timeout-min`, alapértelmezés: 60 perc). |
+| `vote <javaslat> --as <tag> --approve\|--reject --reason <szöveg>` | Szavaz (`--confidence 0..1`). Indoklás kötelező. |
+| `memory add\|search` | Kézi memóriaírás és -keresés (`--ns`, `--k`). |
 
-Kulcsot soha ne commitolj. A GitHub Actions futásban repository secretként add meg.
+A boot állapotai (a Krista bootlogikáját követve):
+- `LOADED`: az állapotfájlok érvényesek, a git-revízió ismert.
+- `UNVERIFIABLE`: az állapot érvényes, de a revízió ismeretlen. Tartalmi munka mehet, repómódosítás nem.
+- `BLOCKED`: egy állapotfájl hibás. A boot ezt rögzíti, és a munkaparancsok megtagadják a futást, amíg a hiba ki nincs javítva. Hibás állapotfájlt a rendszer soha nem ír felül csendben.
+
+Ha a git-revízió megváltozott a boot óta, a parancsok figyelmeztetnek, hogy újra kell bootolni.
+
+### Örökölt, kulcsot igénylő rész
+
+A `github-runner` és a `llm/providers.ts` modellszolgáltatót hív (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`). A host-vezérelt útnak nincs rájuk szüksége, a későbbiekben kivezetjük vagy opcionálissá tesszük őket. Kulcsot soha ne commitolj.
 
 ## Repó felépítése
 
@@ -68,7 +84,9 @@ v3/, plugins/, ruflo/, plugin/   régi Ruflo-kód (átírandó vagy kivezetendő
 
 ## Ismert hiányok
 
-- A `colony-core` tesztjei (`pnpm test`, 15 teszt) a busz, a nyilvántartás, az orchestrator, a konszenzus és a vektortár alapjait fedik. A `ColonyHub`, a `ColonyWorker`, az LLM-szolgáltatók, a `FileVectorStore`, a MoE-router és a Reasoning Bank tesztelése még hiányzik.
+- A `colony-core` tesztjei (`pnpm test`, 26 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, feladatok, szavazás, memória). A `ColonyWorker`, az LLM-szolgáltatók, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
+- A boot jelenleg csak az állapotfájlokat és a git-revíziót ellenőrzi. Szabályfájlok betöltése (mint a Kristában a `runtime/` modulok) még nincs.
+- A beépített tagok (6 szerep) fixek, a CLI-ből nem lehet újat felvenni.
 - A `plant.md` V. és VI. fázisa nincs leírva, és nincs bennük kész kód.
 - A repó gyökere (`package.json`, `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md`) még Ruflo-azonosságot mutat.
 

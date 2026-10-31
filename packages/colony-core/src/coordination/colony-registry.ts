@@ -57,6 +57,17 @@ export class ColonyRegistry {
     return Array.from(this.members.values());
   }
 
+  public snapshot(): ColonyMember[] {
+    return structuredClone(this.getAllMembers());
+  }
+
+  public restore(members: ColonyMember[]): void {
+    this.members.clear();
+    for (const member of structuredClone(members)) {
+      this.members.set(member.id, member);
+    }
+  }
+
   public updateStatus(id: string, status: AgentStatus): void {
     const member = this.members.get(id);
     if (!member) throw new Error(`Member '${id}' not found`);

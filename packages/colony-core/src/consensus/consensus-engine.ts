@@ -10,6 +10,8 @@ export interface ProposalOptions<T = unknown> {
   timeoutMs?: number;
 }
 
+export type SerializedProposal = Omit<ConsensusProposal<any>, 'votes'> & { votes: ConsensusVote[] };
+
 /**
  * Robust, model-agnostic consensus engine supporting quorum and confidence-weighted voting
  */
@@ -122,5 +124,25 @@ export class ConsensusEngine {
 
   public getProposal(proposalId: string): ConsensusProposal<any> | undefined {
     return this.proposals.get(proposalId);
+  }
+
+  public listProposals(): ConsensusProposal<any>[] {
+    return Array.from(this.proposals.values());
+  }
+
+  public snapshot(): SerializedProposal[] {
+    return this.listProposals().map(({ votes, ...rest }) => ({
+      ...structuredClone(rest),
+      votes: Array.from(votes.values()).map((v) => ({ ...v })),
+    }));
+  }
+
+  public restore(proposals: SerializedProposal[]): void {
+    this.proposals.clear();
+    for (const { votes, ...rest } of proposals) {
+      const voteMap = new Map<string, ConsensusVote>();
+      for (const v of votes) voteMap.set(v.voterId, { ...v });
+      this.proposals.set(rest.id, { ...structuredClone(rest), votes: voteMap });
+    }
   }
 }
