@@ -15,11 +15,7 @@ export * from './memory/vector-codex.js';
 // Agents & Tool Registry
 export * from './agents/agent-profiles.js';
 export * from './agents/tool-registry.js';
-export * from './agents/colony-worker.js';
 
 // Neural & Adaptive Learning
 export * from './neural/moe-router.js';
 export * from './neural/reasoning-bank.js';
-
-// LLM Backends
-export * from './llm/providers.js';

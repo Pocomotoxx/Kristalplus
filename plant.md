@@ -1,5 +1,7 @@
 # Migrációs és Átalakítási Terv: Kristalplus -> Kristal Modern Colony
 
+> **Frissítés (2026-10-31):** a terv eredeti LLM-es elemei kivezetve. A 3. alapelv (provider-agnosztikus LLM-interfészek), a 4.3 (`ColonyWorker`) és a teljes VII. fázis (`providers.ts`, `github-runner.ts`, GitHub Actions workflow) már nincs a kódban. A host (Cowork) maga a modell, a mag csak főkönyv, szavazás és helyi memória. Az aktuális állapot: [docs/COLONY-MIGRATION.md](docs/COLONY-MIGRATION.md). Az alábbi szöveg történeti terv.
+
 ## 1. Áttekintés és Célok
 
 A projekt célja a `D:\Kristalplus\Kristalplus` (Claude-Flow / Ruflo v3 architektúra) teljes átültetése egy **tiszta, modern TypeScript / ESM / Bun** alapú keretrendszerbe, megszüntetve a közvetlen Claude / Ruflo függőségeket, miközben a működési logikát, metódusokat és robusztusságot hiánytalanul megőrizzük.

@@ -27,7 +27,7 @@ export interface SearchResult {
 
 /**
  * Model-agnostic embedding provider interface
- * Implementable by OpenAI, Google Gemini, Anthropic, Ollama, or local ONNX models
+ * The core ships only a local, deterministic implementation; a project may add its own backend
  */
 export interface IEmbeddingProvider {
   name: string;

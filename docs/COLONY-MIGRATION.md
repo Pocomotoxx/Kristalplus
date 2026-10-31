@@ -11,12 +11,11 @@
 | Konszenzus | `consensus/consensus-engine.ts` |
 | Vezérlő | `colony-hub.ts` |
 | Memória | `memory/*` (vector store, file store, embeddings, vector codex) |
-| Ágensek, eszközök | `agents/*` |
+| Ágensprofilok, eszköztár | `agents/agent-profiles.ts`, `agents/tool-registry.ts` |
 | Tanulás | `neural/moe-router.ts`, `neural/reasoning-bank.ts` |
-| LLM szolgáltatók | `llm/providers.ts` |
-| Futtató | `github-runner.ts`, `.github/workflows/kristal-colony-runner.yml` |
+| Host-vezérelt CLI | `cli.ts`, `cli/*` |
 
-Ellenőrizve: tiszta telepítés után `pnpm build` hibátlan, és az `example.js` lefut offline módban. A `pnpm test` 15 tesztje mind zöld (busz, nyilvántartás, orchestrator, konszenzus, vektortár). Teszt még hiányzik a `ColonyHub`, `ColonyWorker`, `llm/providers`, `FileVectorStore`, `moe-router` és `reasoning-bank` modulokhoz.
+Ellenőrizve: tiszta telepítés után `pnpm build` hibátlan, és a `pnpm test` 30 tesztje mind zöld. Teszt még hiányzik a `ColonyHub`, `FileVectorStore`, `moe-router` és `reasoning-bank` modulokhoz.
 
 ## Host-vezérelt irány (2026-10-31)
 
@@ -27,17 +26,30 @@ Nincs API-kulcs: a host (Cowork) maga a modell, a mag csak főkönyv. Ehhez kés
 - Szabálybetöltés a bootban: `.colony/rules/manifest.json` + kötelező szabályfájlok, hash-elve, driftvédelemmel (`cli/default-rules.ts` a kezdőkészlet).
 - 15 CLI-teszt a teljes munkafolyamatra és a szabályokra (összesen 30 teszt, mind zöld).
 
-Következmény: a `llm/providers.ts`, a `ColonyWorker` (saját végrehajtás) és a `github-runner` + workflow a host-vezérelt úton nem kell. Döntés kell: kivezetés vagy opcionális marad.
+Következmény: a modellszolgáltatós részek kivezetve (lásd a 2. szakaszt).
 
 ## Átépítés, 1. szakasz: a Ruflo-kód félretétele (kész)
 
 A teljes Ruflo-kód (8316 fájl) a `legacy/ruflo/` alá került `git`-átnevezésként, tartalmi változtatás nélkül, a fájlok előzménye követhető. Ezzel:
 - a gyökér tiszta Colony-azonosságot kapott: új `package.json` (`pnpm build` és `pnpm test` a `colony-core`-ra), új `.gitignore`, rövid `AGENTS.md`, `START_HERE.md`, `README.md`;
 - a régi `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.agents/` és `.githooks/` nem töltődik be a gyökérből indított hostokon;
-- a 36 régi workflow `legacy/ruflo/.github/workflows/` alatt van, és nem fut. Az egyetlen aktív workflow a `kristal-colony-runner.yml`;
+- a 36 régi workflow `legacy/ruflo/.github/workflows/` alatt van, és nem fut;
 - a `colony-core` változatlan, és nem hivatkozik a régi kódra.
 
 A visszaállítás egyszerű: a `legacy/ruflo/` tartalma visszamozgatható a gyökérbe.
+
+## Átépítés, 2. szakasz: az LLM-függés kivezetése (kész)
+
+A magban nincs többé modellszolgáltató, hálózati hívás vagy API-kulcs. Törölve:
+- `llm/providers.ts` (Gemini, OpenAI-kompatibilis adapterek);
+- `OpenAiCompatibleEmbeddingProvider` az `embedding-providers.ts` fájlból (marad a helyi, determinisztikus beágyazás);
+- `github-runner.ts` és a `kristal-colony-runner.yml` workflow (a repóban nem marad futó workflow);
+- `agents/colony-worker.ts` (a munkát a host végzi a `next` / `done` parancsokon át) és a hozzá tartozó `example.ts`, `example-neural.ts`;
+- `legacy/ruflo/CLAUDE.local.md` (személyes helyi beállításfájl).
+
+A `colony-core` build és mind a 30 teszt változatlanul zöld.
+
+A Ruflo a Colonynak csak váz, egy része: amit átvesz, azt modellszolgáltató nélkül veszi át.
 
 ## Még hátra
 
@@ -48,12 +60,10 @@ A visszaállítás egyszerű: a `legacy/ruflo/` tartalma visszamozgatható a gy�
 | `ruflo/`, `plugin/` | A Ruflo csomag és a Claude Code plugin. |
 | `.claude/`, `.agents/`, `.harness/` | Claude/Codex-specifikus konfiguráció. |
 | `Cargo.toml`, `crates/` | Rust federációs rész. |
-| `CLAUDE.local.md` | Személyes, helyi beállításfájl, amely nem való a repóba. Törlendő vagy átnézendő. |
 
 ## Javasolt sorrend a folytatáshoz
 
 1. **Plugin- és csomagleltár:** minden `ruflo-*` pluginra és `@claude-flow/*` csomagra döntés: átvesz / újraír / kivezet. A kivezetettek törlése.
 2. **Licenc és eredet:** az eredeti `LICENSE` és a szerzői jogi nyilatkozat beszerzése a forrásprojektből. A megmaradó átvett kód jelölése.
-3. **Tesztek bővítése:** `ColonyHub`, `ColonyWorker`, szolgáltatók (mockolt `fetch`-csel), `FileVectorStore`, `moe-router`, `reasoning-bank`.
+3. **Tesztek bővítése:** `ColonyHub`, `FileVectorStore`, `moe-router`, `reasoning-bank`.
 4. **A plant.md hiányzó fázisai** (V., VI.) pontosítása. Kód nincs hozzájuk.
-5. **Runner és szolgáltatók sorsa:** kivezetés vagy opcionális marad. A workflow `contents: write` joggal fut issue-kommentre, ezért legalább korlátozni kell, kik indíthatják (pl. `author_association`).

@@ -5,7 +5,9 @@ A `ruflo/` mappa a korábbi Ruflo / Claude Flow kód változatlan másolata (át
 ## Állapot
 
 - **Befagyasztott, nem épül és nem fut.** A Colony kódja és buildje nem hivatkozik rá.
-- **Nincs aktív CI.** A régi workflow-k a `legacy/ruflo/.github/workflows/` alatt vannak. A GitHub csak a gyökér `.github/workflows/` mappát futtatja, ott pedig csak a `kristal-colony-runner.yml` maradt.
+- **Nincs aktív CI.** A régi workflow-k a `legacy/ruflo/.github/workflows/` alatt vannak. A GitHub csak a gyökér `.github/workflows/` mappát futtatja, az pedig üres, tehát a repóban semmilyen workflow nem fut.
+- **A Ruflo a Colonynak csak váz.** A Colony ennek egy részét veszi át. A modellszolgáltatókhoz és külső LLM-ekhez kötött részek nem kerülnek át.
+- **A személyes `CLAUDE.local.md` törölve** (a git-előzményben megvan).
 - **Nincs aktív utasításfájl.** A régi `CLAUDE.md`, `AGENTS.md`, `.claude/` és `.agents/` ide került, ezért a gyökérből indított hostok nem töltik be őket.
 
 ## Eredet és licenc

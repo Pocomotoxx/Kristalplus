@@ -2,7 +2,7 @@
 
 Modellfüggetlen **kolónia-mag** TypeScriptben. Nem hív LLM-et és nem kér API-kulcsot: a **host** (például a Cowork) maga a modell, a Colony pedig a főkönyve. Egy paranccsal (`colony boot`) betölti a rendszert, utána a host parancsokon keresztül dolgozik: feladatot vesz fel, kér, teljesít, szavaz, és a kolónia vektoros memóriájába ír. Az állapot a repóban él (`.colony/`).
 
-> **Állapot: átmenet alatt.** A projekt a Ruflo / Claude Flow v3 rajalapú architektúrájából indult, de már csak inspirációs alap. Az új mag a [`packages/colony-core`](packages/colony-core). A régi Ruflo-kód a [`legacy/ruflo`](legacy/README.md) mappába került: befagyasztva, build és CI nélkül, és fokozatosan lesz átvéve vagy kivezetve. Részletek: [docs/COLONY-MIGRATION.md](docs/COLONY-MIGRATION.md) és [plant.md](plant.md).
+> **Állapot: átmenet alatt.** A projekt a Ruflo / Claude Flow v3 rajalapú architektúrájából indult, de már csak inspirációs alap: a Colonynak a Ruflo csupán egy része, váza. Az új mag a [`packages/colony-core`](packages/colony-core). A régi Ruflo-kód a [`legacy/ruflo`](legacy/README.md) mappába került: befagyasztva, build és CI nélkül, és fokozatosan lesz átvéve vagy kivezetve. Részletek: [docs/COLONY-MIGRATION.md](docs/COLONY-MIGRATION.md) és [plant.md](plant.md).
 
 ## Fogalmak
 
@@ -14,7 +14,7 @@ A korábbi „raj” (swarm) helyett mindenhol **kolónia** (colony) a terminol�
 | Queen / coordinator | `ColonyHub` (vezérlő) |
 | Agent registry | `ColonyRegistry` |
 | Task orchestration | `ColonyTaskOrchestrator` |
-| Worker agent | `ColonyWorker` |
+| Worker agent | a host (Cowork), a `next` és `done` parancsokon át |
 
 ## Mit tud a `colony-core`
 
@@ -25,7 +25,7 @@ A korábbi „raj” (swarm) helyett mindenhol **kolónia** (colony) a terminol�
 - **Tanulás:** MoE-router és Reasoning Bank, amely a korábbi tapasztalatokat visszatáplálja.
 - **Host-vezérelt működés:** a `colony` parancssori eszköz JSON-t ír ki, így bármelyik host használhatja. A magnak nincs szüksége modellszolgáltatóra.
 - **Boot:** a `colony boot` betölti és ellenőrzi az állapotfájlokat és a szabályfájlokat, feloldja a git-revíziót, és állapotot jelent (`LOADED`, `UNVERIFIABLE`, `BLOCKED`). Boot nélkül a munkaparancsok nem futnak.
-- **Opcionális, kulcsot igénylő rész (örökölt):** a `llm/providers.ts` (Gemini és OpenAI-kompatibilis végpontok) és a GitHub Actions runner. A host-vezérelt útnak nincs rájuk szüksége.
+- **Nincs LLM-függés:** a magban nincs modellszolgáltató, hálózati hívás, API-kulcs vagy környezeti változó. A memória beágyazása helyi és determinisztikus.
 
 ## Gyors indítás
 
@@ -78,15 +78,10 @@ A kötelező szabályokat a `.colony/rules/manifest.json` sorolja fel (`mandator
 - Ha boot után bármelyik szabályfájl megváltozik, eltűnik vagy olvashatatlan lesz, a munkaparancsok kódja 2, és újra kell bootolni.
 - A boot a beolvasást és a hash-t bizonyítja, nem azt, hogy a host alkalmazta is a szabályokat.
 
-### Örökölt, kulcsot igénylő rész
-
-A `github-runner` és a `llm/providers.ts` modellszolgáltatót hív (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`). A host-vezérelt útnak nincs rájuk szüksége, a későbbiekben kivezetjük vagy opcionálissá tesszük őket. Kulcsot soha ne commitolj.
-
 ## Repó felépítése
 
 ```
 packages/colony-core/      az új mag (TypeScript, ESM, strict)
-.github/workflows/         kristal-colony-runner.yml (az egyetlen aktív workflow)
 START_HERE.md              indítóutasítás hostoknak
 AGENTS.md                  rövid belépő hostoknak
 plant.md                   migrációs terv
@@ -98,7 +93,7 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 
 ## Ismert hiányok
 
-- A `colony-core` tesztjei (`pnpm test`, 30 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyWorker`, az LLM-szolgáltatók, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
+- A `colony-core` tesztjei (`pnpm test`, 30 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
 - A szabályok csak kötelező készletből állnak, és mind a bootban töltődnek be. Feladathoz kötött szabálybetöltésre (útválasztóra) szándékosan nincs szükség.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
 - A beépített tagok (6 szerep) fixek, a CLI-ből nem lehet újat felvenni.
