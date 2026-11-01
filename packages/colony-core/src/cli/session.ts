@@ -10,6 +10,7 @@ import { BUILTIN_AGENT_PROFILES } from '../agents/agent-profiles.js';
 import type { SerializedProposal } from '../consensus/consensus-engine.js';
 import type { Claim } from '../coordination/claim-ledger.js';
 import type { AuditAnchor, AuditEntry } from '../audit-log.js';
+import type { RouterState } from '../neural/moe-router.js';
 import type { ColonyMember, ColonyTask } from '../types.js';
 import { DEFAULT_MANIFEST, DEFAULT_RULES } from './default-rules.js';
 
@@ -30,6 +31,8 @@ interface LedgerFile {
   proposals: SerializedProposal[];
   /** Absent in ledgers written before claims existed. */
   claims?: Claim[];
+  /** What the router learned; absent in older ledgers. */
+  router?: RouterState;
 }
 
 export interface BootRecord {
@@ -177,6 +180,13 @@ export class ColonySession {
         if (!Array.isArray(ledger.claims)) throw new Error(`${LEDGER_FILE} has an unsupported shape`);
         hub.claims.restore(ledger.claims);
       }
+      if (ledger.router !== undefined) {
+        const r = ledger.router;
+        if (!r || typeof r.weights !== 'object' || typeof r.routed !== 'object' || typeof r.outcomes !== 'number' || typeof r.rewardSum !== 'number') {
+          throw new Error(`${LEDGER_FILE} has an unsupported router state`);
+        }
+        hub.router.restore(r);
+      }
     }
 
     const memoryText = await readIfExists(path.join(stateDir, MEMORY_FILE));
@@ -210,6 +220,7 @@ export class ColonySession {
       tasks: this.hub.orchestrator.snapshot(),
       proposals: this.hub.consensus.snapshot(),
       claims: this.hub.claims.snapshot(),
+      router: this.hub.router.snapshot(),
     };
     await fs.mkdir(this.stateDir, { recursive: true });
     await fs.writeFile(path.join(this.stateDir, LEDGER_FILE), JSON.stringify(ledger, null, 2), 'utf-8');

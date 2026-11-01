@@ -55,6 +55,20 @@ export class ColonyHub {
         });
       }
     });
+    this.wireRouterLearning();
+  }
+
+  /**
+   * Outcome learning for the router. A completed task counts as +0.5 because "done" is what the host
+   * reported, not a verified result; a failed task counts as -1.
+   */
+  private wireRouterLearning(): void {
+    const learn = (taskId: string, reward: number) => {
+      const task = this.orchestrator.getTask(taskId);
+      if (task?.requiredRole) this.router.recordOutcome(`${task.title} ${task.description}`, task.requiredRole, reward);
+    };
+    this.bus.subscribe('task:completed', async (event: ColonyEvent<unknown>) => learn((event.payload as { taskId: string }).taskId, 0.5));
+    this.bus.subscribe('task:failed', async (event: ColonyEvent<unknown>) => learn((event.payload as { taskId: string }).taskId, -1));
   }
 
   /**

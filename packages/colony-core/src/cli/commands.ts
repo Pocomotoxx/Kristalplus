@@ -38,6 +38,9 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
   check                                   run gates BEFORE acting: [--command TEXT] [--text TEXT] [--file PATH [--diff-lines N] [--threshold N]]
                                           [--tool NAME --allow a,b*]; exit 3 on "block". A gate is a check you call, not an interceptor.
+  route test <text>                       which role the router would pick (no side effects)
+  route teach <text> --role R [--reward -1..1]   teach it: this kind of task belongs to R (or not, when negative)
+  route stats                             how routed tasks spread over roles, and how much was learned
   audit list [--task id] [--type t] [--k N]   the hash-chained log of what was done, by whom
   audit verify                            check the chain and that the log still holds the entry anchored at the last boot
   claim list | sweep                  who holds which task; sweep marks stale or long-blocked claims stealable
@@ -114,6 +117,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         file: { type: 'string' },
         tool: { type: 'string' },
         task: { type: 'string' },
+        reward: { type: 'string' },
         allow: { type: 'string' },
         'diff-lines': { type: 'string' },
         threshold: { type: 'string' },
@@ -336,6 +340,22 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       await session.save();
       const output = { ok: decision !== 'block', decision, results, ...(warnings.length ? { warnings } : {}) };
       return { code: decision === 'block' ? 3 : 0, output };
+    }
+
+    case 'route': {
+      if (sub === 'stats') return reply({ load: hub.router.getLoadBalance(), learning: hub.router.getStats() });
+      const text = positionals[2];
+      if (sub !== 'test' && sub !== 'teach') throw new CliError('usage: route test <text> | route teach <text> --role R [--reward -1..1] | route stats');
+      if (!text?.trim()) throw new CliError(`route ${sub} needs a task text`);
+      if (sub === 'test') return reply({ decision: hub.router.routeTask(text, { record: false }) });
+
+      if (!values.role || !ROLES.includes(values.role as AgentRole)) throw new CliError(`--role must be one of ${ROLES.join(', ')}`);
+      const reward = values.reward === undefined ? 1 : Number(values.reward);
+      if (!Number.isFinite(reward) || reward < -1 || reward > 1) throw new CliError('--reward must be between -1 and 1');
+      hub.router.recordOutcome(text, values.role as AgentRole, reward);
+      log('router.taught', values.role, { reward, chars: text.length });
+      await session.save();
+      return reply({ taught: { role: values.role, reward }, decision: hub.router.routeTask(text, { record: false }), learning: hub.router.getStats() });
     }
 
     case 'audit': {

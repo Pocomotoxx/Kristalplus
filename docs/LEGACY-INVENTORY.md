@@ -156,6 +156,25 @@ Amit **nem** vettem át: `projections`, `state-reconstructor` (események vissza
 
 A `legacy/ruflo/v3/@claude-flow/shared` mappa ezért még nem törölhető.
 
+### `neural` (részben átvéve)
+
+Átírva: `neural/moe-router.ts` (a meglévő router kibővítve). Olvasott forrás: a régi `moe-router.ts` útvonalválasztása, súlyfrissítése, terheléskiegyenlítése és a Gini-számítás (kb. 480 sor a 882-ből). A csomag többi része (kb. 13 900 sor) **nincs** átnézve.
+
+| Régi elem | Mi lett belőle |
+|---|---|
+| Kétrétegű kapuhálózat, 384 dimenziós ONNX-beágyazás, véletlen kezdősúlyok (`Math.random()`), REINFORCE-frissítés | **Nem vettem át.** Beágyazásmodellt igényel, és véletlen kezdősúlyok mellett nem reprodukálható. Helyette szavankénti súly: minden kimenet a feladat szavainak súlyát a szerep felé (vagy attól el) mozdítja, `tanulási ráta * jutalom`, felső korláttal. Tiszta összeg, determinisztikus. |
+| `updateExpertWeights(expert, reward)` | `recordOutcome(szöveg, szerep, jutalom)`; a jutalom -1..1 közé vágva. |
+| `getLoadBalance()`, Gini-együttható | Átvéve (`getLoadBalance`), a szerepek között. |
+| Zajos felfedezés, top-k, tárolt súlyfájl | Nem. A súlyok a `ledger.json`-ban vannak (`router`). |
+
+Amit a router tanul, azt a host jelentette: a `done` +0,5 (nem 1, mert csak jelentett), a `fail` -1, a `route teach` kézi. Ez nem ellenőrzött minőség. Egy szabály nélküli szerep (például `analyst`) is megtanulható, de csak tanítással kerül be a jelöltek közé.
+
+Ismert gyengeség, a teszt közben derült ki: a szabályok kulcsszavai sima részszöveg-egyezéssel keresnek, ezért a `pr` kulcsszó a „spreadsheet" szóban is megtalálható. Ez a régi (és az eddigi Colony-) viselkedés, nem változtattam rajta.
+
+Amit **nem** vettem át és még át kell nézni: a megerősítéses tanulás algoritmusai (`q-learning`, `sarsa`, `dqn`, `ppo`, `a2c`, `curiosity`, `decision-transformer`), a tanulási módok (`modes/`), `pattern-learner`, `sona-manager`, `sona-integration`, `flash-attention`, `reasoning-bank` és `reasoningbank-adapter` (a Colonynak van saját, kisebb Reasoning Bankja), `utils/rng` (egy seedelt véletlenszám-generátor, hasznos lehet, ha egyszer kell). Ezek nagy része modellképzéshez tartozik, amit a host-vezérelt mag nem végez.
+
+A `legacy/ruflo/v3/@claude-flow/neural` mappa ezért még nem törölhető.
+
 ## Teendők, ha elfogadod
 
 1. A **C** lista törlése egy külön commitban (a git-előzményben megmarad).

@@ -70,9 +70,10 @@ Az A lista csomagjai a törlés előtt ellenőrizve: egyik sem függött a tör�
 | `guidance` | **Részben átvéve:** `gates.ts` (kapuk) és a `check` parancs. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `security` | **Részben átvéve:** `safe-path.ts` (útvonal-tartalmazás symlinkkel), `safe-git.ts`. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `shared` | **Részben átvéve:** `audit-log.ts` (hash-láncolt, csak hozzáfűzhető napló), `audit` parancs. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
-| `neural`, `aidefence`, `plugin-agent-federation`, `performance` | Még nem kezdtük el. |
+| `neural` | **Részben átvéve:** a MoE-router kimenetből tanul, terheléselosztási statisztika, `route` parancs. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
+| `aidefence`, `plugin-agent-federation`, `performance` | Még nem kezdtük el. |
 
-110 teszt zöld.
+123 teszt zöld.
 
 ## Még hátra
 
