@@ -49,7 +49,7 @@ A beépített tagok így 6-ról 11-re nőnek (`director`, `architect`, `engineer
 
 ## Fázisok
 
-> **Állapot:** a P0–P5 kész (2026-11-01), 233 teszt zöld. Az eredmények a fázisok szakaszainak végén.
+> **Állapot:** a P0–P6 kész (2026-11-01), 248 teszt zöld. Az eredmények a fázisok szakaszainak végén.
 
 ### P0 – Előkészítés (kicsi, kód nélkül)
 
@@ -124,6 +124,8 @@ A terv szerint a Deputy a Chief döntéseit auditálja: célcsúszás, végtelen
 - **Maximális körszám (alapérték 3).** A harmadik elutasítás után a feladat automatikusan *tartásba* kerül, és eszkalál az emberhez (P5 mechanizmusa). A rajzon ez a hiányzó ág volt.
 - Az elfogadás nélkül a konszenzusos feladat nem zárható (ma is így van a szavazásnál); a `review` ezt kiegészíti egy minőségi kapuval, amelyet a feladat létrehozásakor lehet kérni.
 - Auditnapló: minden kör bejegyzés.
+
+**P6 eredménye (kész):** `chief/review.ts`, `colony review`, `task add --review [--max-review-rounds N]`, `ColonyTask.reviewRequired/maxReviewRounds/reviewRounds/reviews`, `ColonyTaskOrchestrator.recordReview`. **Szabályok:** csak `reviewer` szerepű tag értékelhet; az nem, aki a feladatot tartja (a függetlenség minimuma); csak `in_progress` vagy `review` állapotú munka értékelhető; indoklás kötelező (redaktálva, 300 karakterre vágva tárolódik, az auditnaplóba csak a hossza és a verdikt kerül). Az elutasítás `in_progress`-be küldi vissza, és számol egy kört; a limit (alapérték 3) elérésekor a feladat tartásba kerül (`review-limit` a tartó), az auditnaplóban `task.held`. A lezárás blokkolva van, ha a legutóbbi verdikt elutasítás (a nem kért értékelésnél is), vagy ha az értékelés kötelező és nincs jóváhagyás; a `fail` mindig lehetséges. **Friss körszám:** ha a felhasználó (a host jelentése szerint) feloldja a review-limit tartását, a körszám nullázódik; más tartás feloldása nem nullázza. A `next` kimenete (`reviewFeedback`) mutatja az utolsó elutasítás indoklását. **Őszinte korlát:** ha ugyanaz a modell írta a munkát és értékeli is, az értékelés ugyanazokat a vakfoltokat örökli; a jóváhagyás nem tesztredmény. Egy egyszerűsítés: nincs külön „beküldöm értékelésre" parancs, az értékelő a futó munkát bírálja; ha ez kell, a `submit` kis kiegészítés.
 
 ### P7 – Két hiányzó szavazási mód
 

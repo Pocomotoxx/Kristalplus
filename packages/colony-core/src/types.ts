@@ -58,6 +58,14 @@ export type TaskStatus =
   | 'failed'
   | 'cancelled';
 
+/** One verdict of a reviewer on a task. The reason is stored redacted and shortened. */
+export interface ReviewRecord {
+  by: string;
+  verdict: 'approve' | 'reject';
+  reason: string;
+  at: number;
+}
+
 export interface ColonyTask {
   id: string;
   title: string;
@@ -79,6 +87,14 @@ export interface ColonyTask {
    * The release note is what the host says the user decided; the colony cannot check that a person did.
    */
   hold?: { by: string; reason: string; at: number };
+  /** The task cannot be completed until a reviewer approves it. A rejection blocks completion either way. */
+  reviewRequired?: boolean;
+  /** Rejections after which the task is put on hold for the user. Default 3. */
+  maxReviewRounds?: number;
+  /** Rejections so far (reset when the user releases a hold the review limit put on). */
+  reviewRounds?: number;
+  /** The most recent verdicts, oldest first (at most 20). */
+  reviews?: ReviewRecord[];
   /** Quality 0..1 as REPORTED by the host when it closed the task. Not measured by the colony. */
   quality?: number;
   /** The host says a test run backed this outcome. The colony cannot check that; it only keeps the label apart. */

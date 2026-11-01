@@ -1,4 +1,5 @@
-import { ColonyMember, ColonyTask, TaskPriority, TaskStatus, AgentRole } from '../types.js';
+import { ColonyMember, ColonyTask, ReviewRecord, TaskPriority, TaskStatus, AgentRole } from '../types.js';
+import { MAX_KEPT_REVIEWS, maxRoundsOf, REVIEW_LIMIT_HOLDER, reviewBlocksCompletion, validateMaxRounds } from '../chief/review.js';
 import { ColonyRegistry } from './colony-registry.js';
 import { OutcomeReport, validateQuality } from '../chief/outcome.js';
 import { MessageBus } from '../message-bus.js';
@@ -15,6 +16,10 @@ export interface CreateTaskOptions {
   minConsensusQuorum?: number;
   /** Set when the task is a part of a split task. */
   parentId?: string;
+  /** The task cannot be completed before a reviewer approves it. */
+  reviewRequired?: boolean;
+  /** Rejections after which the task goes on hold for the user. Default 3. */
+  maxReviewRounds?: number;
 }
 
 /** One part of a split: a local key, the keys it waits for, and the task to create. */
@@ -61,6 +66,8 @@ export class ColonyTaskOrchestrator {
       createdAt: Date.now(),
     };
     if (options.parentId !== undefined) task.parentId = options.parentId;
+    if (options.reviewRequired) task.reviewRequired = true;
+    if (options.maxReviewRounds !== undefined) task.maxReviewRounds = validateMaxRounds(options.maxReviewRounds);
 
     this.tasks.set(id, task);
 
@@ -129,6 +136,39 @@ export class ColonyTaskOrchestrator {
     return children;
   }
 
+  /**
+   * Record a reviewer's verdict on a task that is being worked on.
+   * A rejection sends the task back to `in_progress` and counts a round; when the rounds reach the
+   * task's limit the task goes on hold so the user decides. The reviewer cannot be the member who holds the task.
+   */
+  public async recordReview(
+    taskId: string,
+    reviewerId: string,
+    verdict: ReviewRecord['verdict'],
+    reason: string,
+    now: number = Date.now()
+  ): Promise<{ task: ColonyTask; rounds: number; maxRounds: number; escalated: boolean }> {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Task '${taskId}' not found`);
+    if (task.status !== 'in_progress' && task.status !== 'review') throw new Error(`Task '${taskId}' is ${task.status}: only work in progress can be reviewed`);
+    if (task.assignedAgentId === reviewerId) throw new Error('a member cannot review the task it holds');
+    if (!reason.trim()) throw new Error('a review needs a reason');
+
+    task.reviews = [...(task.reviews ?? []), { by: reviewerId, verdict, reason, at: now }].slice(-MAX_KEPT_REVIEWS);
+    const maxRounds = maxRoundsOf(task);
+    let escalated = false;
+    if (verdict === 'reject') {
+      task.reviewRounds = (task.reviewRounds ?? 0) + 1;
+      task.status = 'in_progress';
+      if (task.reviewRounds >= maxRounds && !task.hold) {
+        task.hold = { by: REVIEW_LIMIT_HOLDER, reason: `rejected ${task.reviewRounds} times: the user has to decide how to go on`, at: now };
+        escalated = true;
+      }
+    }
+    await this.messageBus.publish('task:reviewed', reviewerId, { taskId, verdict, rounds: task.reviewRounds ?? 0 });
+    return { task, rounds: task.reviewRounds ?? 0, maxRounds, escalated };
+  }
+
   /** Put a hold on an open task. Completing and dispatching are refused until it is released; failing is not. */
   public async holdTask(taskId: string, by: string, reason: string, now: number = Date.now()): Promise<ColonyTask> {
     const task = this.tasks.get(taskId);
@@ -145,6 +185,8 @@ export class ColonyTaskOrchestrator {
     const task = this.tasks.get(taskId);
     if (!task) throw new Error(`Task '${taskId}' not found`);
     if (!task.hold) throw new Error(`Task '${taskId}' is not on hold`);
+    // The user looked at a task the review limit stopped and said go on: it gets a fresh set of rounds.
+    if (task.hold.by === REVIEW_LIMIT_HOLDER) task.reviewRounds = 0;
     task.hold = undefined;
     await this.messageBus.publish('task:hold_released', by, { taskId });
     // A pending task that was only waiting for the release can go out now.
@@ -255,6 +297,8 @@ export class ColonyTaskOrchestrator {
     if (!task) throw new Error(`Task '${taskId}' not found`);
     if (report.quality !== undefined) validateQuality(report.quality);
     if (task.hold) throw new Error(`Task '${taskId}' is on hold (${task.hold.by}): it cannot be completed until the hold is released`);
+    const reviewBlock = reviewBlocksCompletion(task);
+    if (reviewBlock) throw new Error(`Task '${taskId}' cannot be completed: ${reviewBlock}`);
 
     task.status = 'completed';
     task.outputResult = outputResult;

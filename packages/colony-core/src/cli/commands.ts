@@ -8,6 +8,7 @@ import { QUORUM_STRATEGIES, QuorumStrategy } from '../consensus/strategies.js';
 import { ClaimError } from '../coordination/claim-ledger.js';
 import { resolveInside, SafePathError } from '../safe-path.js';
 import { TASK_KINDS, TaskKind } from '../chief/analysis.js';
+import { lastVerdict, maxRoundsOf, REVIEW_LIMIT_HOLDER, validateMaxRounds } from '../chief/review.js';
 import { scanText } from '../injection-scan.js';
 import { REDACT_KINDS, redactText, RedactKind } from '../redact.js';
 import { aggregateDecision, checkDestructive, checkDiffSize, checkSecrets, checkToolAllowed, GateResult } from '../gates.js';
@@ -33,7 +34,8 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
 
   boot                                    load the colony, report boot status, print the work protocol
   status                                  members, tasks, open proposals
-  task add <title> <description>          [--role R] [--after id,id] [--priority P] [--consensus QUORUM]
+  task add <title> <description>          [--role R] [--after id,id] [--priority P] [--consensus QUORUM] [--review [--max-review-rounds N]]
+  review <taskId> --as <reviewer> (--approve|--reject) --reason <text>   a rejection sends the work back; after N rejections (default 3) the task goes on hold for the user
   plan <taskId> [--kind K] [--apply]      analyze a task and propose its steps, waves and strategy; --apply creates them as tasks
   health [--queue-depth N] [--long-wait-min N]   groups, bottlenecks, alerts, recommendations (read-only, heuristic thresholds)
   score <taskId>                       rank the members for a task (heuristic weights), with backups and why the others cannot
@@ -87,7 +89,17 @@ function resolveMembers(session: ColonySession, who: string | undefined): Colony
 const serializeProposal = (p: { votes: Map<string, unknown> }) => ({ ...p, votes: Array.from(p.votes.values()) });
 
 function summarizeTask(t: ColonyTask) {
-  return { id: t.id, title: t.title, status: t.status, priority: t.priority, assignedAgentId: t.assignedAgentId, dependencies: t.dependencies, ...(t.hold ? { onHold: { by: t.hold.by, reason: t.hold.reason } } : {}) };
+  const verdict = lastVerdict(t);
+  return {
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    priority: t.priority,
+    assignedAgentId: t.assignedAgentId,
+    dependencies: t.dependencies,
+    ...(t.hold ? { onHold: { by: t.hold.by, reason: t.hold.reason } } : {}),
+    ...(t.reviewRequired || verdict ? { review: { required: Boolean(t.reviewRequired), rounds: t.reviewRounds ?? 0, maxRounds: maxRoundsOf(t), last: verdict } } : {}),
+  };
 }
 
 export async function runCommand(argv: string[], cwd: string): Promise<CommandResult> {
@@ -136,6 +148,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         'diff-lines': { type: 'string' },
         threshold: { type: 'string' },
         note: { type: 'string' },
+        review: { type: 'boolean' },
+        'max-review-rounds': { type: 'string' },
         kind: { type: 'string' },
         apply: { type: 'boolean' },
         quality: { type: 'string' },
@@ -244,6 +258,14 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const quorum = values.consensus ? Number(values.consensus) : undefined;
       if (quorum !== undefined && (!Number.isInteger(quorum) || quorum < 1)) throw new CliError('--consensus must be a positive integer');
 
+      let maxReviewRounds: number | undefined;
+      if (values['max-review-rounds'] !== undefined) {
+        try {
+          maxReviewRounds = validateMaxRounds(Number(values['max-review-rounds']));
+        } catch (err: any) {
+          throw new CliError(`--max-review-rounds: ${err.message}`);
+        }
+      }
       const { task, routeDecision } = await hub.submitAdaptiveTask({
         title,
         description,
@@ -252,6 +274,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         dependencies,
         consensusRequired: quorum !== undefined,
         minConsensusQuorum: quorum,
+        reviewRequired: Boolean(values.review),
+        maxReviewRounds,
       });
       log('task.added', task.id, { title, requiredRole: task.requiredRole, priority: task.priority, dependencies });
       await session.save();
@@ -291,6 +315,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       await session.save();
       return reply({
         task: hub.orchestrator.getTask(task.id),
+        // Why the last review sent the work back, so the member knows what to change.
+        reviewFeedback: lastVerdict(task) === 'reject' ? { ...task.reviews![task.reviews!.length - 1], round: task.reviewRounds ?? 0, maxRounds: maxRoundsOf(task) } : null,
         member: { id: member.id, role: member.role },
         instructions: profile?.systemPrompt ?? null,
         // Advice only: the colony cannot set sampling or check that the host followed it.
@@ -385,6 +411,32 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       return { code: decision === 'block' ? 3 : 0, output };
     }
 
+    case 'review': {
+      const task = sub ? hub.orchestrator.getTask(sub) : undefined;
+      if (!task) throw new CliError(`task '${sub ?? ''}' not found`);
+      if (values.approve === values.reject) throw new CliError('pass exactly one of --approve or --reject');
+      const [reviewer] = resolveMembers(session, values.as);
+      if (reviewer.role !== 'reviewer') throw new CliError('only a reviewer can review (--as a reviewer member)');
+      const reason = values.reason ?? '';
+      if (!reason.trim()) throw new CliError('--reason <text> is required');
+
+      const verdict = values.approve ? 'approve' : 'reject';
+      // The reason travels back to the member as feedback; it is stored redacted and shortened.
+      const result = await hub.orchestrator.recordReview(task.id, reviewer.id, verdict, redactText(reason).text.slice(0, 300));
+      log('task.reviewed', task.id, { by: reviewer.id, verdict, round: result.rounds, reasonChars: reason.length });
+      if (result.escalated) log('task.held', task.id, { by: REVIEW_LIMIT_HOLDER, cause: 'review limit', rounds: result.rounds });
+      await session.save();
+      return reply({
+        task: summarizeTask(result.task),
+        review: { verdict, rounds: result.rounds, maxRounds: result.maxRounds, escalated: result.escalated },
+        note: result.escalated
+          ? `Rejected ${result.rounds} times: the task is on hold and the user has to decide (\`hold release\` with a note gives it a fresh set of rounds).`
+          : verdict === 'reject'
+            ? 'The task went back to in_progress; the member sees the reason in `next`.'
+            : 'An approval is the reviewer\'s statement, not a test result; the colony does not check it.',
+      });
+    }
+
     case 'watch': {
       if (values.task && !hub.orchestrator.getTask(values.task)) throw new CliError(`task '${values.task}' not found`);
       const report = hub.watch({ focusTaskId: values.task, anchor: boot.audit });
@@ -422,6 +474,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       return reply({
         task: summarizeTask(hub.orchestrator.getTask(task.id)!),
         selfReleased: heldBy === who.id,
+        ...(heldBy === REVIEW_LIMIT_HOLDER ? { reviewRoundsReset: true } : {}),
         note: 'The note is the host\'s report of the user\'s decision; the colony cannot check that a person made it.' + (heldBy === who.id ? ' The hold was released by the member who placed it: the Deputy\'s watch will flag this.' : ''),
       });
     }

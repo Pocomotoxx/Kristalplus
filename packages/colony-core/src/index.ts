@@ -18,6 +18,7 @@ export * from './chief/health.js';
 export * from './chief/outcome.js';
 export * from './chief/analysis.js';
 export * from './chief/watch.js';
+export * from './chief/review.js';
 export * from './colony-hub.js';
 
 // Memory & Vector Codex
