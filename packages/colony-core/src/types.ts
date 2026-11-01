@@ -74,6 +74,11 @@ export interface ColonyTask {
   inputData?: Record<string, unknown>;
   outputResult?: unknown;
   error?: string;
+  /**
+   * A hold put on the task by the auditor: it cannot be completed or dispatched until released.
+   * The release note is what the host says the user decided; the colony cannot check that a person did.
+   */
+  hold?: { by: string; reason: string; at: number };
   /** Quality 0..1 as REPORTED by the host when it closed the task. Not measured by the colony. */
   quality?: number;
   /** The host says a test run backed this outcome. The colony cannot check that; it only keeps the label apart. */

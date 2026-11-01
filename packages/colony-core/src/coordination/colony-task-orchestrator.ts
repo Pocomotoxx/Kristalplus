@@ -129,6 +129,29 @@ export class ColonyTaskOrchestrator {
     return children;
   }
 
+  /** Put a hold on an open task. Completing and dispatching are refused until it is released; failing is not. */
+  public async holdTask(taskId: string, by: string, reason: string, now: number = Date.now()): Promise<ColonyTask> {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Task '${taskId}' not found`);
+    if (task.hold) throw new Error(`Task '${taskId}' is already on hold (${task.hold.by})`);
+    if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') throw new Error(`Task '${taskId}' is ${task.status}: nothing to hold`);
+    if (!reason.trim()) throw new Error('a hold needs a reason');
+    task.hold = { by, reason, at: now };
+    await this.messageBus.publish('task:held', by, { taskId });
+    return task;
+  }
+
+  public async releaseHold(taskId: string, by: string): Promise<ColonyTask> {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Task '${taskId}' not found`);
+    if (!task.hold) throw new Error(`Task '${taskId}' is not on hold`);
+    task.hold = undefined;
+    await this.messageBus.publish('task:hold_released', by, { taskId });
+    // A pending task that was only waiting for the release can go out now.
+    await this.tryDispatchTask(taskId);
+    return task;
+  }
+
   public getTask(taskId: string): ColonyTask | undefined {
     return this.tasks.get(taskId);
   }
@@ -155,6 +178,9 @@ export class ColonyTaskOrchestrator {
     const task = this.tasks.get(taskId);
     if (!task || task.status !== 'pending') {
       return false;
+    }
+    if (task.hold) {
+      return false; // a task on hold is not handed to anyone
     }
 
     // Check if dependencies are fulfilled
@@ -228,6 +254,7 @@ export class ColonyTaskOrchestrator {
     const task = this.tasks.get(taskId);
     if (!task) throw new Error(`Task '${taskId}' not found`);
     if (report.quality !== undefined) validateQuality(report.quality);
+    if (task.hold) throw new Error(`Task '${taskId}' is on hold (${task.hold.by}): it cannot be completed until the hold is released`);
 
     task.status = 'completed';
     task.outputResult = outputResult;

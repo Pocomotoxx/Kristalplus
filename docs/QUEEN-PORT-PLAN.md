@@ -49,7 +49,7 @@ A beépített tagok így 6-ról 11-re nőnek (`director`, `architect`, `engineer
 
 ## Fázisok
 
-> **Állapot:** a P0, a P1, a P2, a P3 és a P4 kész (2026-11-01), 212 teszt zöld. Az eredmények a fázisok szakaszainak végén.
+> **Állapot:** a P0–P5 kész (2026-11-01), 233 teszt zöld. Az eredmények a fázisok szakaszainak végén.
 
 ### P0 – Előkészítés (kicsi, kód nélkül)
 
@@ -115,6 +115,8 @@ A terv szerint a Deputy a Chief döntéseit auditálja: célcsúszás, végtelen
 3. **A vétó eszkaláció, nem egyoldalú javítás.** `colony hold <feladat> --as <auditor> --reason …` a feladatra *tartást* tesz: a `done` és a `next` megtagadja, amíg valaki fel nem oldja. A feloldás (`hold release`) kötelezően megad egy megjegyzést arról, mit mondott a felhasználó. **A CLI nem tudja igazolni, hogy ember oldotta fel**, a megjegyzés „jelentett", és az auditnaplóba kerül.
 
 **Független-e a Deputy?** Ha ugyanaz a modell, mint a Chief, a hibáik korrelálnak. A függetlenség forrása az eltérő *információ* (az eredeti kérés szövege, az auditnapló, a mért számok), nem a „másik fejjel gondolkodás". Ezt a README is kimondja.
+
+**P5 eredménye (kész):** `chief/watch.ts`, `colony watch [--task id]`, `colony hold` / `hold release`, `ColonyTask.hold`, `holdTask` / `releaseHold`. Eseményvezérelt: a `done` és a `fail` kimenete hozza a feladatra vonatkozó, nem alacsony súlyú megállapításokat (`deputy`), tanácsként, nem kapuként. **Ellenőrzések** (mind számlálás vagy összehasonlítás a rekordokon, küszöbük heurisztikus és felülírható): a napló lánca és a boot-horgony (kritikus); átnézetlen `chief.override` és a saját magától feloldott tartás (magas; az override-ot a P7 hozza létre, az ellenőrzés addig is kész); azonos címmel ≥3 bukott feladat (magas); ugyanaz a feladat ≥3-szor létrehozva, egy sem zárult (közepes); egy foglalás ≥3 gazdacserével (magas); nyitott feladat 120 percig rekord nélkül (közepes); tartás, ami még nyitva van, és szöveges célcsúszás-jel (alacsony). **A tartás:** csak `auditor` szerepű tag teheti, a `done` és a kiosztás megtagadja, a `fail` nem; a `next` kihagyja; az `health` külön jelzi. A feloldás megjegyzése a host jelentése a felhasználó döntéséről (redaktálva, 200 karakterre vágva kerül az auditnaplóba). **Őszinte korlátok** (a `watch` kimenete is kiírja): a kolónia nem tárolja az eredeti felhasználói kérést, ezért a célcsúszás ellene nem mérhető, csak a felbontott feladatok részei a gyökérhez képest, szóegyezéssel (gyakori szavak nélkül); a tartás feloldásáról nem tudja, hogy ember döntött-e; a Deputy függetlenségét a rekordok adják, nem egy második vélemény. **Közben kijavítva:** a célcsúszás-jel az „a/the"-szerű gyakori szavakon is egyezést látott (stopszólista bevezetve).
 
 ### P6 – Critic-kör korláttal
 

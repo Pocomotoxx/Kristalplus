@@ -228,12 +228,24 @@ export function buildHealthReport(input: HealthInput): HealthReport {
     });
   }
 
+  // ---- holds waiting for the user
+  const held = tasks.filter((t) => t.hold && (OPEN.has(t.status) || t.status === 'pending'));
+  if (held.length > 0) {
+    bottlenecks.push({
+      type: 'task',
+      location: 'on hold',
+      severity: 'medium',
+      description: `${held.length} task(s) are on hold, waiting for the user: ${held.slice(0, 5).map((t) => t.id).join(', ')}${held.length > 5 ? ', …' : ''}`,
+      suggestedAction: 'Ask the user to decide on the held tasks, then release them with `hold release`',
+    });
+  }
+
   // ---- pending tasks that go nowhere (grouped, so a long queue is one finding, not hundreds)
   const taskById = new Map(tasks.map((t) => [t.id, t]));
   const unroutable = new Map<string, string[]>();
   const longWaiting: string[] = [];
   for (const t of tasks) {
-    if (t.status !== 'pending') continue;
+    if (t.status !== 'pending' || t.hold) continue; // a held task waits on purpose
     const failedDeps = (t.dependencies ?? []).filter((d) => {
       const dep = taskById.get(d);
       return dep && (dep.status === 'failed' || dep.status === 'cancelled');

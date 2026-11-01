@@ -3,7 +3,8 @@ import { ColonyRegistry } from './coordination/colony-registry.js';
 import { ColonyTaskOrchestrator, CreateTaskOptions } from './coordination/colony-task-orchestrator.js';
 import { ConsensusEngine } from './consensus/consensus-engine.js';
 import { ClaimLedger } from './coordination/claim-ledger.js';
-import { AuditLog } from './audit-log.js';
+import { AuditLog, AuditAnchor } from './audit-log.js';
+import { runWatch, WatchReport, WatchThresholds } from './chief/watch.js';
 import { computeMemberStats } from './chief/member-stats.js';
 import { rankMembers, Ranking, RankOptions } from './chief/scoring.js';
 import { buildHealthReport, HealthReport, HealthThresholds } from './chief/health.js';
@@ -97,6 +98,23 @@ export class ColonyHub {
     for (const [role, acc] of sums) measuredDurations[role] = { meanMs: acc.total / acc.samples, samples: acc.samples };
 
     return analyzeTask(task, { patterns, measuredDurations, kind, routerRole: this.router.routeTask(text, { record: false }).targetRole });
+  }
+
+  /**
+   * The Deputy's watch: mechanical findings over the tasks and the audit log. Read-only.
+   * `anchor` is the audit head remembered at the last boot.
+   */
+  public watch(options: { now?: number; thresholds?: Partial<WatchThresholds>; focusTaskId?: string; anchor?: AuditAnchor } = {}): WatchReport {
+    const chain = this.audit.verify();
+    return runWatch({
+      tasks: this.orchestrator.getAllTasks(),
+      audit: this.audit.snapshot(),
+      chainOk: chain.ok,
+      anchorHeld: options.anchor ? this.audit.contains(options.anchor) : null,
+      now: options.now ?? Date.now(),
+      thresholds: options.thresholds,
+      focusTaskId: options.focusTaskId,
+    });
   }
 
   /** Health of the colony at `now`: groups, bottlenecks, alerts, recommendations. Read-only. */

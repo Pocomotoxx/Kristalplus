@@ -54,6 +54,9 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   route stats                             how routed tasks spread over roles, and how much was learned
   audit list [--task id] [--type t] [--k N]   the hash-chained log of what was done, by whom
   audit verify                            check the chain and that the log still holds the entry anchored at the last boot
+  watch [--task id]                       the Deputy's mechanical checks: loops, repeated failures, cycling claims, stalled or unreviewed work, log integrity (read-only)
+  hold <taskId> --as <auditor> --reason <text>        put a task on hold: it cannot be completed or dispatched until released
+  hold release <taskId> --as <member> --note <text>   release it; the note is what the user decided (the colony cannot check that a person did)
   claim list | sweep                  who holds which task; sweep marks stale or long-blocked claims stealable
   claim heartbeat <taskId> --as <member>  [--progress 0..100]   show life; takes a stealable claim back
   claim block <taskId> --as <member> --reason <text> | claim unblock <taskId> --as <member>
@@ -84,7 +87,7 @@ function resolveMembers(session: ColonySession, who: string | undefined): Colony
 const serializeProposal = (p: { votes: Map<string, unknown> }) => ({ ...p, votes: Array.from(p.votes.values()) });
 
 function summarizeTask(t: ColonyTask) {
-  return { id: t.id, title: t.title, status: t.status, priority: t.priority, assignedAgentId: t.assignedAgentId, dependencies: t.dependencies };
+  return { id: t.id, title: t.title, status: t.status, priority: t.priority, assignedAgentId: t.assignedAgentId, dependencies: t.dependencies, ...(t.hold ? { onHold: { by: t.hold.by, reason: t.hold.reason } } : {}) };
 }
 
 export async function runCommand(argv: string[], cwd: string): Promise<CommandResult> {
@@ -132,6 +135,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         allow: { type: 'string' },
         'diff-lines': { type: 'string' },
         threshold: { type: 'string' },
+        note: { type: 'string' },
         kind: { type: 'string' },
         apply: { type: 'boolean' },
         quality: { type: 'string' },
@@ -190,6 +194,12 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
 
   const session = await ColonySession.open(dir);
   const { hub } = session;
+  /** What the Deputy's watch says about this task, right after it was closed. Advice, not a gate. */
+  const deputyNotes = (taskId: string) =>
+    hub
+      .watch({ focusTaskId: taskId, anchor: boot.audit })
+      .findings.filter((f) => f.severity !== 'low')
+      .map((f) => ({ kind: f.kind, severity: f.severity, detail: f.detail }));
   const log = (type: string, aggregateId: string, payload: Record<string, unknown> = {}) =>
     hub.audit.append({ type, aggregateId, actor: values.as ?? 'host', payload }, Date.now());
   const reply = (output: Record<string, unknown>): CommandResult => ({ code: 0, output: { ok: true, ...output, ...(warnings.length ? { warnings } : {}) } });
@@ -256,7 +266,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       }
       const mine = hub.orchestrator
         .getAllTasks()
-        .filter((t) => (t.status === 'assigned' || t.status === 'in_progress') && t.assignedAgentId && ids.has(t.assignedAgentId))
+        .filter((t) => (t.status === 'assigned' || t.status === 'in_progress') && !t.hold && t.assignedAgentId && ids.has(t.assignedAgentId))
         .sort(
           (a, b) =>
             Number(b.status === 'in_progress') - Number(a.status === 'in_progress') ||
@@ -295,6 +305,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const task = taskId ? hub.orchestrator.getTask(taskId) : undefined;
       if (!task) throw new CliError(`task '${taskId ?? ''}' not found`);
       if (!OPEN_STATUSES.includes(task.status)) throw new CliError(`task '${task.id}' is ${task.status}, not open`);
+      if (task.hold && command === 'done') throw new CliError(`task '${task.id}' is on hold (${task.hold.by}: ${task.hold.reason}); ask the user, then \`hold release\``);
       const agentId = task.assignedAgentId!;
       let quality: number | undefined;
       if (values.quality !== undefined) {
@@ -310,8 +321,9 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         await hub.orchestrator.failTask(task.id, agentId, values.error, report);
         hub.claims.close(task.id, 'failed', agentId, Date.now());
         log('task.failed', task.id, { memberId: agentId, errorChars: values.error.length, reportedQuality: quality ?? null });
+        const deputy = deputyNotes(task.id);
         await session.save();
-        return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!), reported });
+        return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!), reported, ...(deputy.length ? { deputy } : {}) });
       }
 
       if (!values.result?.trim()) throw new CliError('--result <text> is required and must not be empty');
@@ -323,8 +335,9 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       hub.claims.close(task.id, 'completed', agentId, Date.now());
       log('task.completed', task.id, { memberId: agentId, resultChars: values.result.length, reportedQuality: quality ?? null, reportedVerifiedByTest: report.verifiedByTest });
       const unblocked = hub.orchestrator.getAllTasks().filter((t) => before.get(t.id) === 'pending' && t.status === 'assigned');
+      const deputy = deputyNotes(task.id);
       await session.save();
-      return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!), unblocked: unblocked.map(summarizeTask), reported });
+      return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!), unblocked: unblocked.map(summarizeTask), reported, ...(deputy.length ? { deputy } : {}) });
     }
 
     case 'check': {
@@ -370,6 +383,47 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       await session.save();
       const output = { ok: decision !== 'block', decision, results, ...(warnings.length ? { warnings } : {}) };
       return { code: decision === 'block' ? 3 : 0, output };
+    }
+
+    case 'watch': {
+      if (values.task && !hub.orchestrator.getTask(values.task)) throw new CliError(`task '${values.task}' not found`);
+      const report = hub.watch({ focusTaskId: values.task, anchor: boot.audit });
+      return reply({
+        report,
+        note: 'Mechanical checks over the records, with heuristic thresholds. A clean report means these checks found nothing, not that the work is right.',
+      });
+    }
+
+    case 'hold': {
+      const releasing = sub === 'release';
+      const taskId = releasing ? positionals[2] : sub;
+      const task = taskId ? hub.orchestrator.getTask(taskId) : undefined;
+      if (!task) throw new CliError(`task '${taskId ?? ''}' not found`);
+      const [who] = resolveMembers(session, values.as);
+
+      if (!releasing) {
+        if (who.role !== 'auditor') throw new CliError('only the auditor can put a task on hold (--as an auditor member)');
+        const reason = values.reason ?? '';
+        if (!reason.trim()) throw new CliError('--reason <text> is required');
+        await hub.orchestrator.holdTask(task.id, who.id, redactText(reason).text);
+        log('task.held', task.id, { by: who.id, reasonChars: reason.length });
+        await session.save();
+        return reply({ task: summarizeTask(task), note: 'The task cannot be completed or dispatched until the hold is released. Ask the user.' });
+      }
+
+      const note = values.note ?? '';
+      if (!note.trim()) throw new CliError('--note <text> is required: what did the user decide?');
+      if (!task.hold) throw new CliError(`task '${task.id}' is not on hold`);
+      const heldBy = task.hold.by;
+      await hub.orchestrator.releaseHold(task.id, who.id);
+      // The note is kept, redacted and shortened, as the trace of the decision.
+      log('task.hold_released', task.id, { heldBy, releasedBy: who.id, note: redactText(note).text.slice(0, 200) });
+      await session.save();
+      return reply({
+        task: summarizeTask(hub.orchestrator.getTask(task.id)!),
+        selfReleased: heldBy === who.id,
+        note: 'The note is the host\'s report of the user\'s decision; the colony cannot check that a person made it.' + (heldBy === who.id ? ' The hold was released by the member who placed it: the Deputy\'s watch will flag this.' : ''),
+      });
     }
 
     case 'plan': {
