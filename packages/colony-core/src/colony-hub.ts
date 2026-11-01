@@ -8,11 +8,12 @@ import { computeMemberStats } from './chief/member-stats.js';
 import { rankMembers, Ranking, RankOptions } from './chief/scoring.js';
 import { buildHealthReport, HealthReport, HealthThresholds } from './chief/health.js';
 import { outcomeReward } from './chief/outcome.js';
+import { analyzeTask, AnalysisContext, MatchedPattern, TaskAnalysis, TaskKind } from './chief/analysis.js';
 import { scanText } from './injection-scan.js';
 import { VectorCodex } from './memory/vector-codex.js';
 import { MoERouter, RouteDecision } from './neural/moe-router.js';
 import { ReasoningBank } from './neural/reasoning-bank.js';
-import { ColonyEvent, ColonyMember, ColonyTask } from './types.js';
+import { AgentRole, ColonyEvent, ColonyMember, ColonyTask } from './types.js';
 
 export interface ColonyHubConfig {
   name: string;
@@ -72,6 +73,30 @@ export class ColonyHub {
       const byId = new Map(candidates.map((m) => [m.id, m]));
       return ranking.ranked.map((s) => byId.get(s.memberId)!);
     });
+  }
+
+  /**
+   * Analyze a task: kind, complexity, an estimate, the steps it would split into, their waves and
+   * strategy. Read-only. Uses the reasoning bank for similar past work and the colony's own
+   * completed tasks for measured durations.
+   */
+  public async analyze(task: ColonyTask, kind?: TaskKind): Promise<TaskAnalysis> {
+    const text = `${task.title} ${task.description}`;
+    const recalled = await this.reasoningBank.recallPatterns(text, { topK: 5, minScore: 0.4 });
+    const patterns: MatchedPattern[] = recalled.map((p) => ({ patternId: p.id, strategy: p.solution.slice(0, 160), successScore: p.successScore, relevance: Math.round((p.relevance ?? 0) * 1000) / 1000 }));
+
+    const sums = new Map<AgentRole, { total: number; samples: number }>();
+    for (const t of this.orchestrator.getAllTasks()) {
+      if (t.status !== 'completed' || !t.requiredRole || t.startedAt === undefined || t.completedAt === undefined || t.completedAt < t.startedAt) continue;
+      const acc = sums.get(t.requiredRole) ?? { total: 0, samples: 0 };
+      acc.total += t.completedAt - t.startedAt;
+      acc.samples++;
+      sums.set(t.requiredRole, acc);
+    }
+    const measuredDurations: AnalysisContext['measuredDurations'] = {};
+    for (const [role, acc] of sums) measuredDurations[role] = { meanMs: acc.total / acc.samples, samples: acc.samples };
+
+    return analyzeTask(task, { patterns, measuredDurations, kind, routerRole: this.router.routeTask(text, { record: false }).targetRole });
   }
 
   /** Health of the colony at `now`: groups, bottlenecks, alerts, recommendations. Read-only. */

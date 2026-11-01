@@ -7,6 +7,8 @@ export interface ReasoningPattern {
   role: string;
   successScore: number; // 0.0 to 1.0
   createdAt: number;
+  /** Similarity to the query, set by `recallPatterns`. */
+  relevance?: number;
 }
 
 /**
@@ -90,6 +92,7 @@ export class ReasoningBank {
         role: meta?.role || 'unknown',
         successScore: meta?.score || res.score,
         createdAt: res.document.createdAt,
+        relevance: res.score,
       });
     }
 

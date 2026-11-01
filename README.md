@@ -66,6 +66,7 @@ node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres ere
 | `fail <id> --error <szöveg> [--quality 0..1]` | Hibásnak jelöli a feladatot. A jutalom mindig negatív: `-(1 - 0,3 × minőség)`, megadás nélkül -1. |
 | `propose <id> <téma> --as <tag>` | Szavazást indít (`--quorum N` vagy `--strategy majority\|supermajority\|byzantine\|unanimous`, `--timeout-min`, alapértelmezés: 60 perc). Stratégiánál a szavazók a nem offline és nem hibás tagok. |
 | `topology` | A tagok kapcsolati gráfja (`--type mesh\|star\|tree\|hybrid`, `--fanout`, `--degree`, `--from` és `--to` a legrövidebb úthoz). Csak olvas. |
+| `plan <feladat> [--kind K] [--apply]` | Feladatelemzés: fajta (szerepből vagy szavakból), komplexitás, becsült idő (heurisztikus; legalább 3 mért befejezés után mért), témák, hasonló korábbi munka, bizonyosság, és a felbontás lépései szerepekkel, hullámokkal és stratégiával (`single`, `sequential`, `pipeline`, `parallel`, `fan-out-fan-in`, `hybrid`, a függőségi gráfból levezetve). Alapból csak javasol. Az `--apply` a lépéseket valódi feladatként hozza létre; a szülő az utolsó lépésre vár, és utolsóként zárul (jóváhagyás). Rövid (200 karakter alatti) feladat, ellenőrzés és részfeladat nem bomlik. |
 | `health [--queue-depth N] [--long-wait-min N]` | A kolónia egészsége (csak olvas): öt csoport (vezetés, kutatás, elemzés, végrehajtás, minőség) hibaaránnyal és válaszidővel, szűk keresztmetszetek (hosszú sor, hibás tagok, elavult vagy blokkolt foglalás, feladat, amit senki nem vehet át, bukott függőségre váró feladat), riasztások, javaslatok, átbocsátás, szavazási sikerarány. A küszöbök és a képletek heurisztikusak. |
 | `score <feladat>` | A tagok rangsora a feladatra összetevőkre bontva, az elsődleges és legfeljebb két tartalék tag, és hogy a többi miért nem jöhet szóba. |
 | `member list\|preset standard` | Tagok listája; a hiányzó beépített szerepek pótlása egy régebbi főkönyvben (idempotens). A boot csak üres kolóniát tölt fel. |
@@ -111,7 +112,7 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 
 ## Ismert hiányok
 
-- A `colony-core` tesztjei (`pnpm test`, 193 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
+- A `colony-core` tesztjei (`pnpm test`, 212 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
 - A szabályok csak kötelező készletből állnak, és mind a bootban töltődnek be. Feladathoz kötött szabálybetöltésre (útválasztóra) szándékosan nincs szükség.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
 - A beépített tagok (11 szerep) fixek; a `member preset standard` csak pótolja a hiányzókat. Egyedi tag felvétele és az ideiglenes tagok még nincsenek (P9 a [tervben](docs/QUEEN-PORT-PLAN.md)).

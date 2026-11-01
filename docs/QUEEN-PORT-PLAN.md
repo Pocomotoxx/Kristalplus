@@ -49,7 +49,7 @@ A beépített tagok így 6-ról 11-re nőnek (`director`, `architect`, `engineer
 
 ## Fázisok
 
-> **Állapot:** a P0, a P1, a P2 és a P4 kész (2026-11-01), 193 teszt zöld. Az eredmények a fázisok szakaszainak végén.
+> **Állapot:** a P0, a P1, a P2, a P3 és a P4 kész (2026-11-01), 212 teszt zöld. Az eredmények a fázisok szakaszainak végén.
 
 ### P0 – Előkészítés (kicsi, kód nélkül)
 
@@ -95,6 +95,8 @@ A régi pontszám súlyai: képesség 0,30, terhelés 0,20, teljesítmény 0,25,
 - A mintaillesztést a meglévő Reasoning Bank adja.
 - **Heurisztikák (döntés: igen):** a régi időtartamok és a komplexitás-képlet kézzel megadott számok, nem mérések. `heuristic` jelölést kapnak, felülírhatók, és ahol van mért adat (P0 statisztika), az az erősebb.
 - A régi `memoryMb`, `cpuIntensive`, `networkRequired` kimarad.
+
+**P3 eredménye (kész):** `chief/analysis.ts`, `colony plan <feladat> [--kind K] [--apply]`, `ColonyTaskOrchestrator.splitTask`, `ColonyHub.analyze`. Sablonok: kódolás (terv: `architect` → megvalósítás: `engineer` → teszt: `tester`), tesztelés, kutatás (`researcher` → `analyst` → `director` összegzés → `reviewer` ellenőrzés), koordináció, szöveg (`writer` vázlat → `writer` írás → `reviewer` átnézés), általános (egy lépés). A lépés szerepet kap (a régi „domain" helyett). A stratégia a gráfból jön: `single`, `sequential` (lánc), `pipeline` (lánc legalább 3 lépéssel és 3 szereppel), `parallel`, `fan-out-fan-in`, `hybrid`; a mai sablonok mind láncok, a többi alak az `executionWaves`/`strategyOf` függvényekben él, tesztelve. **Eltérések a régitől:** a Colony-feladatnak nincs típusa, ezért a `fajta` a kért szerepből, ennek híján a szavakból következik (a szerep az erősebb, mert a „teszt" szó egy megvalósítási feladat szövegében is előfordul); a komplexitás, az időbecslés és a bizonyosság a régi képlet, `heuristic` jelöléssel; ha egy szerepre legalább 3 mért befejezés van, a becslés ezt használja (a mért idő a várakozást is tartalmazza); az erőforrás-becslés (memória, CPU, hálózat) kimarad; a részfeladat nem bomlik újra. **A felbontás szemantikája:** a szülő nem kezdett feladat (`pending` vagy `assigned`, nem `in_progress`), az `--apply` után `pending`, a lépésekre (a levelekre) vár, és az utolsó lépés után kerül kiosztásra: ő a jóváhagyás. Érvénytelen felbontás (ismeretlen kulcs, kör, kettős kulcs) semmit nem változtat. A `plan` jelzi, ha egy lépés szerepéhez nincs online tag. Ismert korlát: a mintaillesztés a mai szóegyezéses beágyazáson alapul (küszöb 0,4, a régi 0,6 másik beágyazásra volt hangolva).
 
 ### P4 – Tanulás a kimenetből
 

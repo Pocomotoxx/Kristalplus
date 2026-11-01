@@ -13,6 +13,15 @@ export interface CreateTaskOptions {
   inputData?: Record<string, unknown>;
   consensusRequired?: boolean;
   minConsensusQuorum?: number;
+  /** Set when the task is a part of a split task. */
+  parentId?: string;
+}
+
+/** One part of a split: a local key, the keys it waits for, and the task to create. */
+export interface SplitPart {
+  key: string;
+  dependsOn: string[];
+  options: CreateTaskOptions;
 }
 
 /**
@@ -51,6 +60,7 @@ export class ColonyTaskOrchestrator {
       minConsensusQuorum: options.minConsensusQuorum ?? 2,
       createdAt: Date.now(),
     };
+    if (options.parentId !== undefined) task.parentId = options.parentId;
 
     this.tasks.set(id, task);
 
@@ -60,6 +70,63 @@ export class ColonyTaskOrchestrator {
     await this.tryDispatchTask(id);
 
     return task;
+  }
+
+  /**
+   * Split a task that has not been started into parts. The parts become real tasks (with `parentId`
+   * and the dependencies between them), and the parent waits for the last of them: it is completed
+   * last, as the sign-off. A parent that was assigned but not started goes back to the queue.
+   * Nothing is changed unless the whole split is valid.
+   */
+  public async splitTask(parentId: string, parts: readonly SplitPart[]): Promise<ColonyTask[]> {
+    const parent = this.tasks.get(parentId);
+    if (!parent) throw new Error(`Task '${parentId}' not found`);
+    if (parent.status !== 'pending' && parent.status !== 'assigned') throw new Error(`Task '${parentId}' is ${parent.status}: only a task that has not been started can be split`);
+    if (parent.subTaskIds && parent.subTaskIds.length > 0) throw new Error(`Task '${parentId}' is already split`);
+    if (parts.length === 0) throw new Error('a split needs at least one part');
+
+    // Validate and order the parts before touching anything.
+    const keys = new Set<string>();
+    for (const p of parts) {
+      if (keys.has(p.key)) throw new Error(`duplicate part key '${p.key}'`);
+      keys.add(p.key);
+    }
+    for (const p of parts) {
+      for (const d of p.dependsOn) if (!keys.has(d)) throw new Error(`part '${p.key}' depends on unknown part '${d}'`);
+    }
+    const ordered: SplitPart[] = [];
+    const placed = new Set<string>();
+    while (ordered.length < parts.length) {
+      const next = parts.filter((p) => !placed.has(p.key) && p.dependsOn.every((d) => placed.has(d)));
+      if (next.length === 0) throw new Error('the parts depend on each other in a cycle');
+      for (const p of next) {
+        ordered.push(p);
+        placed.add(p.key);
+      }
+    }
+
+    if (parent.status === 'assigned') {
+      if (parent.assignedAgentId) this.registry.completeTask(parent.assignedAgentId, parent.id);
+      parent.status = 'pending';
+      parent.assignedAgentId = undefined;
+      parent.startedAt = undefined;
+    }
+
+    const idOf = new Map<string, string>();
+    const children: ColonyTask[] = [];
+    for (const p of ordered) {
+      const child = await this.createTask({ ...p.options, parentId: parent.id, dependencies: [...(p.options.dependencies ?? []), ...p.dependsOn.map((d) => idOf.get(d)!)] });
+      idOf.set(p.key, child.id);
+      children.push(child);
+    }
+
+    const needed = new Set(parts.flatMap((p) => p.dependsOn));
+    const leaves = parts.filter((p) => !needed.has(p.key)).map((p) => idOf.get(p.key)!);
+    parent.subTaskIds = children.map((c) => c.id);
+    parent.dependencies = Array.from(new Set([...(parent.dependencies ?? []), ...leaves]));
+
+    await this.messageBus.publish('task:split', 'orchestrator', { taskId: parent.id, subTaskIds: parent.subTaskIds });
+    return children;
   }
 
   public getTask(taskId: string): ColonyTask | undefined {

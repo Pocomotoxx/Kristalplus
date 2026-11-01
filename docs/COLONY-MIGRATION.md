@@ -72,11 +72,11 @@ Az A lista csomagjai a törlés előtt ellenőrizve: egyik sem függött a tör�
 | `shared` | **Részben átvéve:** `audit-log.ts` (hash-láncolt, csak hozzáfűzhető napló), `audit` parancs. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `neural` | **Részben átvéve:** a MoE-router kimenetből tanul, terheléselosztási statisztika, `route` parancs. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `aidefence` | **Átvéve (a fenyegetésfelismerés):** `injection-scan.ts`, `scan` parancs, a `memory add` kapuja. A tanuló szolgáltatás (`threat-learning-service`) nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
-| `swarm` – koordinátorok (Colony Chief) | **Terv kész, P0–P2 és P4 megvalósítva:** 11 szerep, pontozásos kiosztás, tagstatisztika, `score`, `member`, `health`, kimenetből tanulás (`--quality`). A többi fázis (felbontás, Deputy, Critic-kör, szavazási módok, összegzés, anomália-sor, ideiglenes tagok) hátra van. Lásd: [QUEEN-PORT-PLAN.md](QUEEN-PORT-PLAN.md). |
+| `swarm` – koordinátorok (Colony Chief) | **Terv kész, P0–P4 megvalósítva:** 11 szerep, pontozásos kiosztás, tagstatisztika, `score`, `member`, `health`, `plan` (elemzés és felbontás), kimenetből tanulás (`--quality`). A többi fázis (Deputy, Critic-kör, szavazási módok, összegzés, anomália-sor, ideiglenes tagok) hátra van. Lásd: [QUEEN-PORT-PLAN.md](QUEEN-PORT-PLAN.md). |
 | `plugin-agent-federation` | **Csak a személyesadat-szűrő átvéve:** `redact.ts`, `redact` parancs. A föderáció maga (társak, átvitel, WireGuard, bizalmi szintek) hálózati gépezet, a Colonyban nincs rá hely. Törlésre javasolt, a döntés a tiéd. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `performance` | Még nem kezdtük el. |
 
-193 teszt zöld.
+212 teszt zöld.
 
 ## Még hátra
 

@@ -7,6 +7,7 @@ import { ColonySession, loadRules, resolveRevision } from './session.js';
 import { QUORUM_STRATEGIES, QuorumStrategy } from '../consensus/strategies.js';
 import { ClaimError } from '../coordination/claim-ledger.js';
 import { resolveInside, SafePathError } from '../safe-path.js';
+import { TASK_KINDS, TaskKind } from '../chief/analysis.js';
 import { scanText } from '../injection-scan.js';
 import { REDACT_KINDS, redactText, RedactKind } from '../redact.js';
 import { aggregateDecision, checkDestructive, checkDiffSize, checkSecrets, checkToolAllowed, GateResult } from '../gates.js';
@@ -33,6 +34,7 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   boot                                    load the colony, report boot status, print the work protocol
   status                                  members, tasks, open proposals
   task add <title> <description>          [--role R] [--after id,id] [--priority P] [--consensus QUORUM]
+  plan <taskId> [--kind K] [--apply]      analyze a task and propose its steps, waves and strategy; --apply creates them as tasks
   health [--queue-depth N] [--long-wait-min N]   groups, bottlenecks, alerts, recommendations (read-only, heuristic thresholds)
   score <taskId>                       rank the members for a task (heuristic weights), with backups and why the others cannot
   member list | member preset standard    list members; add the built-in roles a colony is missing
@@ -130,6 +132,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         allow: { type: 'string' },
         'diff-lines': { type: 'string' },
         threshold: { type: 'string' },
+        kind: { type: 'string' },
+        apply: { type: 'boolean' },
         quality: { type: 'string' },
         'verified-by-test': { type: 'boolean' },
         'queue-depth': { type: 'string' },
@@ -366,6 +370,49 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       await session.save();
       const output = { ok: decision !== 'block', decision, results, ...(warnings.length ? { warnings } : {}) };
       return { code: decision === 'block' ? 3 : 0, output };
+    }
+
+    case 'plan': {
+      const task = sub ? hub.orchestrator.getTask(sub) : undefined;
+      if (!task) throw new CliError(`task '${sub ?? ''}' not found`);
+      if (values.kind !== undefined && !TASK_KINDS.includes(values.kind as TaskKind)) throw new CliError(`unknown kind '${values.kind}' (use ${TASK_KINDS.join(', ')})`);
+      const analysis = await hub.analyze(task, values.kind as TaskKind | undefined);
+
+      // Which of the roles the steps need exist in the colony at all?
+      const roles = Array.from(new Set(analysis.steps.map((s) => s.requiredRole)));
+      const coverage = roles.map((role) => ({ role, members: hub.registry.getAllMembers().filter((m) => m.role === role && m.status !== 'offline' && m.status !== 'error').length }));
+      const uncovered = coverage.filter((c) => c.members === 0).map((c) => `no member with the role '${c.role}' is online: its step would wait unassigned`);
+
+      if (!values.apply) {
+        return reply({ applied: false, analysis, coverage, ...(uncovered.length ? { planWarnings: uncovered } : {}), note: 'Complexity, estimates and confidence are heuristic. Nothing was changed; add --apply to create the steps as tasks.' });
+      }
+      if (analysis.steps.length === 0) throw new CliError('nothing to split: the task is short, a review, or already a subtask (use --kind to force another template)');
+
+      const children = await hub.orchestrator.splitTask(
+        task.id,
+        analysis.steps.map((s) => ({
+          key: s.key,
+          dependsOn: s.dependsOn,
+          options: {
+            title: `${task.title} - ${s.name}`,
+            description: `${s.description}\n\nContext (part of ${task.id}): ${task.description}`,
+            requiredRole: s.requiredRole,
+            priority: task.priority,
+          },
+        }))
+      );
+      log('task.split', task.id, { kind: analysis.kind, strategy: analysis.strategy, children: children.map((c) => c.id) });
+      for (const c of children) log('task.added', c.id, { title: c.title, requiredRole: c.requiredRole, priority: c.priority, dependencies: c.dependencies ?? [], parentId: task.id });
+      await session.save();
+      return reply({
+        applied: true,
+        parent: summarizeTask(hub.orchestrator.getTask(task.id)!),
+        children: children.map((c) => ({ ...summarizeTask(c), requiredRole: c.requiredRole })),
+        waves: analysis.waves,
+        strategy: analysis.strategy,
+        ...(uncovered.length ? { planWarnings: uncovered } : {}),
+        note: 'The parent waits for its last step and is completed last, as the sign-off.',
+      });
     }
 
     case 'health': {
