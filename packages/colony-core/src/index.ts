@@ -7,6 +7,7 @@ export * from './consensus/consensus-engine.js';
 export * from './consensus/strategies.js';
 export * from './topology.js';
 export * from './gates.js';
+export * from './injection-scan.js';
 export * from './audit-log.js';
 export * from './safe-path.js';
 export * from './safe-git.js';

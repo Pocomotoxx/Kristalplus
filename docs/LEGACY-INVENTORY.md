@@ -175,6 +175,28 @@ Amit **nem** vettem át és még át kell nézni: a megerősítéses tanulás al
 
 A `legacy/ruflo/v3/@claude-flow/neural` mappa ezért még nem törölhető.
 
+### `aidefence` (a fenyegetésfelismerés átvéve)
+
+Átírva: `injection-scan.ts`. Olvasott forrás: `threat-detection-service.ts` és `entities/threat.ts` teljesen; a `threat-learning-service.ts` (409 sor) és az `index.ts` (344 sor) **nincs** átnézve.
+
+Hibák és gyengeségek a régi kódban, amiket átíráskor kijavítottam:
+- A `disable your safety filter` minta hibás volt (a „safety" és a „filter" közt hiányzott a szóköz), ezért pont arra a mondatra nem szólt, amelyre írták. A teszt hozta elő.
+- A `DAN` minta `/i` jelzővel a „Dan" nevet is dzsailbreaknek látta. Most csak nagybetűs `DAN`.
+- A `system:` minta („system" kettősponttal, bárhol a szövegben) a „the file system: ext4"-re is riasztott. Most a sor elején kell állnia.
+- A bankkártya-minta bármilyen 16 számjegyet találatnak vette. Most Luhn-ellenőrzés kell hozzá.
+- A régi eredmény a talált személyes adatból csak egy `true`-t adott, a titkoknál pedig kimaszkolt részt. Most fajta és darabszám van, érték soha.
+- Idő, `Date.now()` és véletlen azonosító kikerült: ugyanarra a szövegre mindig ugyanaz az eredmény.
+
+Új: a rejtett karakterek (nulla szélességű, kétirányú vezérlők, Unicode címkékarakterek) eltávolítása a keresés előtt, és jelentése. A nulla szélességű karakterrel szétvágott „ignore previous instructions" így is elkapódik.
+
+Mire jó itt: a memóriába írt vagy fájlból olvasott szöveg később kontextusként kerül a host elé, tehát beadási útvonal. A `memory add` a `hostile` szöveget elutasítja (`--allow-risky`-vel felülírható), a `scan` parancs fájlt vagy szöveget vizsgál.
+
+Korlátok: reguláris kifejezések listája. Átfogalmazott, lefordított vagy kódolt támadást nem fog meg, a „clean" annyit jelent, hogy a listán semmi nem egyezett. Lehet téves riasztás is (az injekcióról szóló szöveg). A találat részlete nem megbízható szöveg, adatként kell kezelni. A `task add` leírását nem vizsgálja (a feladat a hosttól vagy a felhasználótól jön).
+
+Amit **nem** vettem át: `threat-learning-service` (az AgentDB-ben tanuló része), a viselkedéselemzés és a szabályellenőrzés típusai (`BehavioralAnalysisResult`, `PolicyVerificationResult`; a hozzájuk tartozó kód nincs a csomagban).
+
+A `legacy/ruflo/v3/@claude-flow/aidefence` mappa ezért még nem törölhető (a tanuló szolgáltatás miatt).
+
 ## Teendők, ha elfogadod
 
 1. A **C** lista törlése egy külön commitban (a git-előzményben megmarad).
