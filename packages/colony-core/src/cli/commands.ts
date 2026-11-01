@@ -33,7 +33,8 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   boot                                    load the colony, report boot status, print the work protocol
   status                                  members, tasks, open proposals
   task add <title> <description>          [--role R] [--after id,id] [--priority P] [--consensus QUORUM]
-  score <taskId>                          rank the members for a task (heuristic weights), with backups and why the others cannot
+  health [--queue-depth N] [--long-wait-min N]   groups, bottlenecks, alerts, recommendations (read-only, heuristic thresholds)
+  score <taskId>                       rank the members for a task (heuristic weights), with backups and why the others cannot
   member list | member preset standard    list members; add the built-in roles a colony is missing
   next --as <role|memberId>              take the next task for that role (with memory context)
   done <taskId> --result <text>           complete a task; a real, non-empty result is required
@@ -128,6 +129,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         allow: { type: 'string' },
         'diff-lines': { type: 'string' },
         threshold: { type: 'string' },
+        'queue-depth': { type: 'string' },
+        'long-wait-min': { type: 'string' },
         approve: { type: 'boolean' },
         'allow-risky': { type: 'boolean' },
         hash: { type: 'string' },
@@ -352,6 +355,20 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       await session.save();
       const output = { ok: decision !== 'block', decision, results, ...(warnings.length ? { warnings } : {}) };
       return { code: decision === 'block' ? 3 : 0, output };
+    }
+
+    case 'health': {
+      const numeric = (name: 'queue-depth' | 'long-wait-min', raw: string | undefined): number | undefined => {
+        if (raw === undefined) return undefined;
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n < 0) throw new CliError(`--${name} must be a non-negative number`);
+        return n;
+      };
+      const report = hub.health(Date.now(), { queueDepth: numeric('queue-depth', values['queue-depth']), longWaitMinutes: numeric('long-wait-min', values['long-wait-min']) });
+      return reply({
+        report,
+        note: 'Thresholds and the health formulas are heuristic. Error rates and response times come from the tasks and are what the host reported; response time includes waiting.',
+      });
     }
 
     case 'score': {

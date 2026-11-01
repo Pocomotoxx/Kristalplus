@@ -49,7 +49,7 @@ A beépített tagok így 6-ról 11-re nőnek (`director`, `architect`, `engineer
 
 ## Fázisok
 
-> **Állapot:** a P0 és a P1 kész (2026-11-01), 163 teszt zöld. A P0 eredményei a P0 szakasz végén, a P1 részletei a P1 szakasz végén.
+> **Állapot:** a P0, a P1 és a P2 kész (2026-11-01), 178 teszt zöld. Az eredmények a fázisok szakaszainak végén.
 
 ### P0 – Előkészítés (kicsi, kód nélkül)
 
@@ -84,6 +84,8 @@ A régi pontszám súlyai: képesség 0,30, terhelés 0,20, teljesítmény 0,25,
 - **A régi hiány:** a domain-egészségnél az `avgResponseTimeMs` és az `errorRate` egyaránt fixen 0 volt („Would need tracking"). Itt a foglalásokból (átfutási idő) és az auditnaplóból (hibás/összes) valósan számoljuk.
 - A „domain" a terv hat csoportja: Vezetés és ellenőrzés, Kutatás, Elemzés, Végrehajtás, Minőség (és a memória a szolgáltatásoknál). A szerepek csoportokra képezve, nem fix ügynökszámokra.
 - Kimarad: `coordinationLatencyMs` (futásidejű mérőszám).
+
+**P2 eredménye (kész):** `chief/health.ts`, `colony health`. Csoportok: vezetés (`director`, `auditor`, `security`), kutatás (`researcher`, `exobiologist`), elemzés (`analyst`), végrehajtás (`architect`, `engineer`, `writer`, `custom`), minőség (`reviewer`, `tester`). A hibaarány és a válaszidő a feladatokból számolt (a régiben fix 0 volt). Az üres kapacitás nem hiba (a régi csoport-egészség minden szabad kapacitásért büntetett). A régihez képest új leletek: feladat, amit senki nem vehet át (szerepenként egy lelet, nem feladatonként), bukott vagy törölt függőségre váró feladat, hosszan várakozó feladat. Heurisztikus: a küszöbök (sor 10/20, hibaarány 0,1, várakozás 60 perc), a csoport-egészség képlete (sornyomás + fél hibaarány + az offline tagok aránya) és az összesített érték (a csoportok átlaga mínusz súlyosság szerinti levonás). A régi `calculateOverallHealth` (1560–1700) nincs elolvasva, az összesítés saját. Ismert korlát: az egészség csak a főkönyvből látszó dolgokat méri, a host munkamenetének tényleges állapotát nem.
 
 ### P3 – Elemzés, felbontás, végrehajtási terv
 

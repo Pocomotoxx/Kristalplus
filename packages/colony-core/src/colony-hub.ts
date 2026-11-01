@@ -6,6 +6,7 @@ import { ClaimLedger } from './coordination/claim-ledger.js';
 import { AuditLog } from './audit-log.js';
 import { computeMemberStats } from './chief/member-stats.js';
 import { rankMembers, Ranking, RankOptions } from './chief/scoring.js';
+import { buildHealthReport, HealthReport, HealthThresholds } from './chief/health.js';
 import { VectorCodex } from './memory/vector-codex.js';
 import { MoERouter, RouteDecision } from './neural/moe-router.js';
 import { ReasoningBank } from './neural/reasoning-bank.js';
@@ -64,6 +65,18 @@ export class ColonyHub {
       const ranking = this.rankFor(task, candidates);
       const byId = new Map(candidates.map((m) => [m.id, m]));
       return ranking.ranked.map((s) => byId.get(s.memberId)!);
+    });
+  }
+
+  /** Health of the colony at `now`: groups, bottlenecks, alerts, recommendations. Read-only. */
+  public health(now: number = Date.now(), thresholds?: Partial<HealthThresholds>): HealthReport {
+    return buildHealthReport({
+      members: this.registry.getAllMembers(),
+      tasks: this.orchestrator.getAllTasks(),
+      claims: this.claims.list(),
+      proposals: this.consensus.listProposals(),
+      now,
+      thresholds,
     });
   }
 

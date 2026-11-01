@@ -98,7 +98,9 @@ function components(task: ColonyTask, member: ColonyMember, stats: MemberStats |
 }
 
 function validatedWeights(override: Partial<ScoreWeights> | undefined): ScoreWeights {
-  const weights = { ...DEFAULT_SCORE_WEIGHTS, ...override };
+  // An explicit `undefined` must not overwrite the default.
+  const given = Object.fromEntries(Object.entries(override ?? {}).filter(([, v]) => v !== undefined));
+  const weights: ScoreWeights = { ...DEFAULT_SCORE_WEIGHTS, ...given };
   for (const [key, value] of Object.entries(weights)) {
     if (!Number.isFinite(value) || value < 0) throw new Error(`score weight '${key}' must be a non-negative number`);
   }
