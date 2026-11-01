@@ -69,8 +69,8 @@ export function checkDestructive(command: string): GateResult | null {
   return null;
 }
 
-/** Find secret-looking text. The result reports the pattern name and offsets, never the value. */
-export function checkSecrets(text: string): GateResult | null {
+/** Where secret-looking text sits in `text`: pattern name, offset and length. The value is not copied out. */
+export function findSecretSpans(text: string): Array<{ pattern: string; offset: number; length: number }> {
   const found: Array<{ pattern: string; offset: number; length: number }> = [];
   for (const { name, pattern } of SECRETS) {
     pattern.lastIndex = 0;
@@ -78,8 +78,13 @@ export function checkSecrets(text: string): GateResult | null {
       found.push({ pattern: name, offset: match.index ?? 0, length: match[0].length });
     }
   }
+  return found.sort((a, b) => a.offset - b.offset);
+}
+
+/** Find secret-looking text. The result reports the pattern name and offsets, never the value. */
+export function checkSecrets(text: string): GateResult | null {
+  const found = findSecretSpans(text);
   if (found.length === 0) return null;
-  found.sort((a, b) => a.offset - b.offset);
   return {
     gate: 'secrets',
     decision: 'block',

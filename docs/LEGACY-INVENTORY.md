@@ -197,6 +197,23 @@ Amit **nem** vettem át: `threat-learning-service` (az AgentDB-ben tanuló rész
 
 A `legacy/ruflo/v3/@claude-flow/aidefence` mappa ezért még nem törölhető (a tanuló szolgáltatás miatt).
 
+### `plugin-agent-federation` (csak a személyesadat-szűrő átvéve)
+
+A csomag két telepítés közti ügynök-föderáció: társak felfedezése, kézfogás, WireGuard-háló, útválasztás, bizalmi szintek, költségkeret, A2A-ügynökkártya, MCP-eszközök (kb. 8300 sor). Ez hálózat, a Colony magja pedig szándékosan nem hív hálózatot, és egy telepítés egy főkönyvet vezet. Ezért **a föderációt nem vettem át.** Olvasott forrás: `pii-pipeline-service.ts` teljesen, `trust-evaluator.ts` az első 140 sora. A többi **nincs** átnézve.
+
+Átvett rész: a PII-csővezeték (a föderáción kimenő adat szűrése) önálló, hálózat nélkül is hasznos. Átírva: `redact.ts` és a `redact` parancs, arra az esetre, ha valami elhagyja a projektet (jelentés, kommentár).
+
+Eltérések a régi kódtól:
+- **Átfedő találatok.** A régi csere a találatokat egymástól függetlenül, offset szerint írta át; egy bankkártyaszám telefonszámnak is látszott, és a szöveg összekeveredhetett. Most az átfedésből a leghosszabb marad, minden karakter legfeljebb egyszer cserélődik.
+- **Érvényesség.** Kártya: Luhn. IBAN: mod 97. IPv4: minden szám 0..255. A régi minták bármilyen számcsoportot elfogadtak.
+- **Kimaradt a bizalmi szintek mátrixa**, az amerikai TAJ-szám (SSN), az utcanév-utótagos cím és a „Mr./Dr." nevek mintája: nem illenek ehhez a projekthez, és főleg téves találatot adtak. **Nevet és postai címet ezért nem ismer fel.**
+- **Hash.** Só nélkül egy hash-elt telefonszám vagy e-mail visszafejthető próbálgatással, ezért a `--hash` kötelezően `--salt`-tal megy (HMAC-SHA256), és ez álnevesítés, nem anonimizálás. Titkot soha nem hash-el, mindig kicserél.
+- **Telefonszám.** Csak a `+` előtaggal kezdődő nemzetközi alak; a puszta számsor túl gyakran azonosító vagy dátum.
+
+Amit **nem** vettem át: a `trust-evaluator` (társak megbízhatósági pontszáma, csak föderációban van értelme), a költségkeret és a költségjelentés (modellköltséghez), az A2A-ügynökkártya, a WireGuard-szolgáltatások, a kapcsolat-megszakító, a bejövő küldő, az MCP-eszközök.
+
+**Javaslat:** a `legacy/ruflo/v3/@claude-flow/plugin-agent-federation` és a hozzá tartozó `legacy/ruflo/v3/crates` (Rust föderációs társ) törölhető, mert nincs bennük átveendő. Ha a jövőben két Colony között megosztás kell, az git-alapú csomagcsere lenne (hash-ellenőrzött export és import), nem ez a hálózati kód. A törlés a te döntésed.
+
 ## Teendők, ha elfogadod
 
 1. A **C** lista törlése egy külön commitban (a git-előzményben megmarad).

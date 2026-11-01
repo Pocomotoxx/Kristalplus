@@ -8,6 +8,7 @@ import { QUORUM_STRATEGIES, QuorumStrategy } from '../consensus/strategies.js';
 import { ClaimError } from '../coordination/claim-ledger.js';
 import { resolveInside, SafePathError } from '../safe-path.js';
 import { scanText } from '../injection-scan.js';
+import { REDACT_KINDS, redactText, RedactKind } from '../redact.js';
 import { aggregateDecision, checkDestructive, checkDiffSize, checkSecrets, checkToolAllowed, GateResult } from '../gates.js';
 import { buildTopology, isFullyConnected, shortestPath, TOPOLOGY_TYPES, TopologyType } from '../topology.js';
 
@@ -40,7 +41,9 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   check                                   run gates BEFORE acting: [--command TEXT] [--text TEXT] [--file PATH [--diff-lines N] [--threshold N]]
                                           [--tool NAME --allow a,b*]; exit 3 on "block". A gate is a check you call, not an interceptor.
   scan (--text TEXT | --file PATH)        look for injection phrasing, hidden characters, personal data; exit 3 on "hostile"
-  route test <text>                    which role the router would pick (no side effects)
+  redact (--text TEXT | --file PATH)      replace e-mail, card, IBAN, phone, IP, JWT, database URL and secrets by placeholders
+                                          [--hash kind,kind --salt S]   salted hash instead of a placeholder (never for secrets)
+  route test <text>                 which role the router would pick (no side effects)
   route teach <text> --role R [--reward -1..1]   teach it: this kind of task belongs to R (or not, when negative)
   route stats                             how routed tasks spread over roles, and how much was learned
   audit list [--task id] [--type t] [--k N]   the hash-chained log of what was done, by whom
@@ -125,6 +128,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         threshold: { type: 'string' },
         approve: { type: 'boolean' },
         'allow-risky': { type: 'boolean' },
+        hash: { type: 'string' },
+        salt: { type: 'string' },
         reject: { type: 'boolean' },
         ns: { type: 'string' },
         k: { type: 'string' },
@@ -374,6 +379,35 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
           ...(warnings.length ? { warnings } : {}),
         },
       };
+    }
+
+    case 'redact': {
+      if (!values.text && !values.file) throw new CliError('redact needs --text or --file');
+      if (values.text && values.file) throw new CliError('pass either --text or --file, not both');
+      const hashKinds = values.hash ? values.hash.split(',').map((s) => s.trim()).filter(Boolean) : [];
+      for (const k of hashKinds) if (!REDACT_KINDS.includes(k as RedactKind)) throw new CliError(`unknown kind '${k}' (use ${REDACT_KINDS.join(', ')})`);
+      if (hashKinds.length > 0 && !values.salt) throw new CliError('--hash needs --salt: an unsalted hash can be guessed back');
+      let content = values.text ?? '';
+      if (values.file) {
+        let abs: string;
+        try {
+          abs = (await resolveInside(dir, values.file)).resolved;
+        } catch (err) {
+          if (err instanceof SafePathError) throw new CliError(err.code === 'OUTSIDE' ? '--file must be inside the project directory' : `--file: ${err.message}`);
+          throw err;
+        }
+        const stat = await fs.stat(abs).catch(() => null);
+        if (!stat?.isFile()) throw new CliError(`file '${values.file}' not found`);
+        if (stat.size > 2_000_000) throw new CliError('--file is larger than 2 MB');
+        content = await fs.readFile(abs, 'utf-8');
+      }
+      const result = redactText(content, { hash: hashKinds as RedactKind[], salt: values.salt });
+      log('redact', 'redact', { findings: result.findings, chars: content.length });
+      await session.save();
+      return reply({
+        ...result,
+        note: 'Patterns find common shapes only. Names, postal addresses and unusual formats pass through; read the result before sending it anywhere. A hash is pseudonymization, not anonymization.',
+      });
     }
 
     case 'route': {

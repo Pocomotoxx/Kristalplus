@@ -70,6 +70,7 @@ node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres ere
 | `claim steal <feladat> --as <tag>` | Stealable foglalás átvétele a türelmi idő (10 perc) után, a tag kapacitásán belül. A feladat új gazdát kap. |
 | `claim handoff <feladat> --as <tag> --to <tag> --reason <szöveg>`, `claim accept\|reject <feladat> --as <tag>` | Átadás: a címzett elfogadja vagy bármelyik fél elutasítja. |
 | `check` | Kapuk, **mielőtt** a host cselekszik: `--command` (romboló parancs, titok), `--text`, `--file` (titokkeresés, `--diff-lines`, `--threshold`), `--tool` + `--allow` (eszköz-engedélylista). Döntés: `allow`, `warn`, `require-confirmation`, `block` (kilépési kód 3). A talált titkot soha nem írja ki. |
+| `redact --text\|--file` | Mielőtt valami elhagyja a projektet (jelentés, kommentár): e-mail, bankkártya (Luhn), IBAN (mod 97), nemzetközi telefonszám, IP, JWT, adatbázis-URL és titkok cseréje helyőrzőre. `--hash kind,kind --salt S` sózott hash a helyőrző helyett (titokra soha). A nevet és a postai címet **nem** ismeri fel, olvasd át az eredményt. |
 | `scan --text\|--file` | Prompt-injection megfogalmazás, rejtett karakterek (nulla szélességű, kétirányú vezérlők, Unicode címkék) és személyes adat keresése. Verdikt: `clean`, `suspicious`, `hostile` (kilépési kód 3). A személyes adatot fajta és darabszám szerint adja vissza, az értéket soha. A `memory add` a `hostile` szöveget elutasítja (`--allow-risky` felülírja), mert a memória később kontextusként kerül a host elé. |
 | `route test\|teach\|stats` | A MoE-router: `test <szöveg>` megmutatja, melyik szerepet választaná (nincs mellékhatás), `teach <szöveg> --role R [--reward -1..1]` tanítja, `stats` a szerepek terhelését (Gini) és a tanultakat. A router a `done` (+0,5, mert csak jelentett) és a `fail` (-1) kimenetből is tanul. |
 | `audit list\|verify` | A `.colony/audit.jsonl` hash-láncolt napló: ki mit tett (feladat, foglalás, szavazat, kapu-döntés). A `verify` a láncot és azt ellenőrzi, hogy a napló még tartalmazza az utolsó bootkor rögzített bejegyzést. |
@@ -106,7 +107,7 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 
 ## Ismert hiányok
 
-- A `colony-core` tesztjei (`pnpm test`, 136 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
+- A `colony-core` tesztjei (`pnpm test`, 145 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
 - A szabályok csak kötelező készletből állnak, és mind a bootban töltődnek be. Feladathoz kötött szabálybetöltésre (útválasztóra) szándékosan nincs szükség.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
 - A beépített tagok (6 szerep) fixek, a CLI-ből nem lehet újat felvenni.
