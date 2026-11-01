@@ -22,9 +22,9 @@ A régi Queen hat dolgot csinál: **elemez → kioszt → pontoz → egészsége
 
 Az ügynökrendszer három eleme **új a régi kódhoz képest**, és külön fázist kap: a **Deputy** (független felügyelet), a **Critic-kör** (visszaküldés korláttal) és az **emberi kapu** (eszkaláció). Ezeket a régi rendszer nem tudta.
 
-## A szereplista (10 szerep)
+## A szereplista (11 szerep)
 
-A felhasználó 15 szerepes terve itt 10 szerepre van összevonva. Az összevonás indoka: minden szerep egy host-munkamenet vagy egy külön forduló, és a koordinációs költség gyorsabban nő, mint a haszon. Ha egy összevonással nem értesz egyet, a terv csak a szereplistát érinti.
+A felhasználó 15 szerepes terve itt 10 szerepre van összevonva, és kiegészül az **Exobiológussal** (11. szerep, lásd P11). Az összevonás indoka: minden szerep egy host-munkamenet vagy egy külön forduló, és a koordinációs költség gyorsabban nő, mint a haszon. Ha egy összevonással nem értesz egyet, a terv csak a szereplistát érinti.
 
 | Szerep (`AgentRole`) | A terv szerepe | Állapot ma | Megjegyzés |
 |---|---|---|---|
@@ -33,6 +33,7 @@ A felhasználó 15 szerepes terve itt 10 szerepre van összevonva. Az összevon�
 | `security` | Jogi és Etikai biztos | van | A mechanikus kapukat futtatja (`check`, `scan`, `redact`), és „a mintákra nem volt találat" szöveggel jelent, nem „megfelelő"-vel. |
 | `researcher` | Deep Research + Data Scraper + Data Cleansing | **új** | A három szerep egy. A lekérés a host képessége; a kimenet a `scan` és a `redact` kapuján megy át. |
 | `analyst` | Data Analyst & Reasoning | van, profil nincs | Profilt kap. |
+| `exobiologist` | **Exobiológus**: anomália-hipotézisek | **új** | Nem kap feladatot a szokásos kiosztással, nem szavaz a kvórumban, és nem ír éles kódot. Csak az anomália-sorból dolgozik (P11). |
 | `architect` | Code Architect | van | |
 | `engineer` | Developer | van | |
 | `writer` | Content Creator & Copywriter | **új** | |
@@ -44,7 +45,7 @@ Nem szerep, hanem a mag szolgáltatása:
 - **Synthesis & Narrative** → a Chief `synthesize` parancsa (P8).
 - **Token & Compute Budget** → **kimarad.** A host-vezérelt magban nincs API, így költség sem, amit mérni lehetne; a modellt a host választja. (A régi `ruflo-cost-tracker` ugyanezért esett ki a C listán.) Legfeljebb egy szabad megjegyzés a feladaton.
 
-A beépített tagok így 6-ról 10-re nőnek (`director`, `architect`, `engineer`, `reviewer`, `tester`, `security` + `auditor`, `researcher`, `analyst`, `writer`). A mai főkönyvekben 6 tag van: a tagok pótlása külön, kifejezett parancs (`member preset`, P9), nem csendes változás a bootban.
+A beépített tagok így 6-ról 11-re nőnek (`director`, `architect`, `engineer`, `reviewer`, `tester`, `security` + `auditor`, `researcher`, `analyst`, `writer`, `exobiologist`). A mai főkönyvekben 6 tag van: a tagok pótlása külön, kifejezett parancs (`member preset`, P9), nem csendes változás a bootban.
 
 ## Fázisok
 
@@ -57,7 +58,9 @@ A beépített tagok így 6-ról 10-re nőnek (`director`, `architect`, `engineer
 
 A régi pontszám súlyai: képesség 0,30, terhelés 0,20, teljesítmény 0,25, egészség 0,15, elérhetőség 0,10.
 
-- Új szerepek (`auditor`, `researcher`, `writer`), négy új beépített profil (`auditor`, `researcher`, `analyst`, `writer`).
+- Új szerepek (`auditor`, `researcher`, `writer`, `exobiologist`), öt új beépített profil (`auditor`, `researcher`, `analyst`, `writer`, `exobiologist`).
+- A profilba egy **`sampling` javaslat** kerül (például `temperature`, `topP`) *tanácsként*: a mag nem hív modellt, ezért nem tudja beállítani, és azt sem tudja ellenőrizni, hogy a host betartotta-e. A host dönt. A `boot` és a `next` kimenete mutatja a javaslatot.
+- Az `exobiologist` kikerül a normál kiosztásból (csak kifejezett szerepmegadással kap feladatot) és a kvórum szavazói közül.
 - `chief/scoring.ts`, `colony score <feladat>`: minden tag pontszáma összetevőkre bontva. Képesség = szerep és eszköz egyezés; terhelés = `currentTaskIds / maxConcurrentTasks`; teljesítmény = tényleges sikerarány a P0 statisztikából; egészség = hibás/offline állapot és elavult foglalások; elérhetőség = `idle`/`busy`.
 - Elsődleges tag + legfeljebb 2 tartalék (küszöb 0,3, mint a régiben).
 - **Viselkedésváltozás (döntés: igen):** a pontozás váltja fel a mai „legkevésbé terhelt" kiosztást a `tryDispatchTask`-ban. Holtversenynél a tag azonosítója dönt.
@@ -122,6 +125,29 @@ A terv szerint a Deputy a Chief döntéseit auditálja: célcsúszás, végtelen
 - `colony member preset <név>`: a hiányzó beépített tagok pótlása a 10 szereplistára (`standard`), és egy opcionális, régi **15 ügynökös** sablon (`legacy-15`), amely a tagokat `offline` állapotban hozza létre (az `offline` tag nem szavaz és nem kap feladatot, amíg egy host be nem jelentkezik helyette).
 - A `broadcast`, `selectOptimalSwarm` és a föderációs szavazás hálózati/több telepítéses: P10.
 
+### P11 – Anomália-sor és Exobiológus
+
+Az Exobiológus feladata: amit a standard elemzés vagy a Critic zajnak, hibának vagy értelmezhetetlennek bélyegez, azt ne dobja el senki csendben, és legyen, aki 2–3 radikálisan más hipotézist ad hozzá. A tervben három pillér van; ebből kettő a magban megvalósítható, egy nem.
+
+**Ami nem valósítható meg a magban: a hőmérséklet és a Top-P.** A Colony nem hív modellt, a mintavételezést a host állítja. A mag legfeljebb *javaslatot* ír a profilba (P1 `sampling`: 0,8–1,0 / magas Top-P az Exobiológusnak, 0,0–0,2 az elemzőnek), és nem tudja ellenőrizni, hogy betartották-e. Egy ellenőrizhető, host-oldali megfelelő: több független, eltérő piszkozat kérése ugyanarra a mintára; a Colony ezeket rögzíti.
+
+**Ami megvalósítható:**
+
+1. **Anomália-nyilvántartás (a legértékesebb rész).** `colony anomaly add --task T --as <szerep> --sample … --dismissed-as noise|error|unclear --reason …`: aki valamit zajnak bélyegez, rögzíti, mit dobott el és miért. A minta a `scan` és a `redact` kapuján megy át. Így az elvetett adat nyoma megmarad, az auditnaplóba is bekerül.
+2. **Hipotézis-életút.** `colony anomaly hypothesize <id> --as <exobiologist> --hypothesis … --prediction … --test …`. Egy anomáliához legfeljebb 3 hipotézis. **Kötelező mezők:** egy ellenőrizhető előrejelzés (mi látszana, ha igaz) és a legolcsóbb próba. Ez a védelem a puszta hallucináció ellen: aminek nincs cáfolható előrejelzése, az nem kerül be.
+   Állapotok: `proposed` → `testing` → `supported` | `refuted` | `untestable`. A `proposed` és az `untestable` hipotézis **sosem tény**: a kimeneten `speculative` címke áll, a Reasoning Bankba és a memóriába csak `supported` jut, és az is a `hypotheses` névtérbe, jelölve.
+3. **Ellenőrzés.** `colony anomaly judge <id> --as <auditor|reviewer> …`: a logikai és gyakorlati helytállást a Deputy vagy a Critic mondja ki. Az, hogy egy hipotézis `supported`, csak a `tester` által futtatott próbával lehet (`--verified-by-test`, ami szintén a host állítása, de külön címkével). Az ítélet mellé a Deputy `watch`-ja jelzi, ha egy anomália megválaszolatlan (nincs hipotézis vagy nincs ítélet).
+4. **Inverz RAG.** `colony memory search <kérdés> --far <mód>`: nem a leghasonlóbb találatot adja. Három mód: `cold` (a legkevésbé vagy soha nem lekért dokumentumok, ehhez lekérdezési számláló kell a tárban), `foreign` (más névtérből, a kérdéshez nem tartozó), `far` (a kérdéstől legtávolabbi vektorú). **Őszinte korlát:** a mai beágyazás hash-alapú, tehát a „távol" itt szó szerinti különbözőséget jelent, nem jelentésbeli távolságot, és a `far` majdnem véletlen dokumentumokat ad. A `cold` és a `foreign` ettől független, és szerintem hasznosabb. Jelentésalapú távolsághoz a hostnak kellene beágyazást adnia, ez külön döntés.
+
+**Őrök a visszaélés ellen:**
+- Csak az anomália-sorból dolgozik, nem ír éles kódot, és az „ne alkalmazz bevált gyakorlatot" utasítás csak a hipotézis-alkotásra szól, a megvalósításra nem.
+- Költségkorlát: legfeljebb 3 hipotézis anomáliánként, és legfeljebb N (alapérték 5) nyitott anomália egyszerre; ezen felül a `watch` jelez.
+- A hipotézis a döntéseket nem befolyásolja (nem szavaz, nem kap súlyt a kiosztásban), amíg `supported` nem lett.
+
+**Mit nem tudok garantálni:** hogy a hipotézisek *jók*. A rendszer a rossz hipotézist nem szűri ki, csak azt, hogy cáfolhatatlan és ellenőrizetlen állítás ne váljon ténnyé. A minőséget a próba dönti el.
+
+Tesztek: életút és tiltott átmenetek, a 3 hipotézis korlát, a kötelező előrejelzés, `speculative` címke, titok az anomália-mintában (nem kerül ki), `cold`/`foreign` keresés és a számláló, a memóriába csak `supported` jut.
+
 ### P10 – Több Colony egymás közt (csak tervezés)
 
 Hálózat nélkül csak git-alapú csomagcsere lehet (hash-ellenőrzött export és import). Külön tervként kell megírni, nem a régi kódból.
@@ -148,8 +174,9 @@ Hálózat nélkül csak git-alapú csomagcsere lehet (hash-ellenőrzött export 
 | P8 | P1 | ~250 sor + tesztek | alacsony |
 | P9 | P1 | ~250 sor + tesztek | alacsony |
 | P10 | P9 | külön terv | – |
+| P11 | P1, P5, P6 | ~450 sor + tesztek | közepes (a hipotézisek minősége, a `cold` keresés számlálója a tárban) |
 
-Ajánlott menet: P0 → P1 → P2 → P4 → P3 → P5 → P6 → P7 → P8 → P9. Mindegyik külön commit, tesztekkel és a README, migrációs térkép és leltár frissítésével, ahogy eddig.
+Ajánlott menet: P0 → P1 → P2 → P4 → P3 → P5 → P6 → **P11** → P7 → P8 → P9. Mindegyik külön commit, tesztekkel és a README, migrációs térkép és leltár frissítésével, ahogy eddig.
 
 ## Döntések
 
@@ -160,6 +187,7 @@ Ajánlott menet: P0 → P1 → P2 → P4 → P3 → P5 → P6 → P7 → P8 → 
 | 3 | `chief-override` | Igen: három típusra, indoklással, auditnaplóval, csak `director` szerepű tagnak, a Deputy utólagos megjelölésével. |
 | 4 | Ügynökrendszer | A felhasználó terve, **10 szerepre összevonva** (lásd fent). A régi 15 ügynökös hierarchia csak opcionális sablon (`legacy-15`, P9), alapból `offline` tagokkal. |
 | 5 | Becslések | Igen: `heuristic` jelöléssel, felülírható alapértékként. |
+| 6 | Exobiológus | Új szerep (11. szerep), a P11 szerint: anomália-nyilvántartás, kötelezően cáfolható hipotézisek, `speculative` címke, a hőmérséklet csak javaslat a profilban. |
 
 ## Nyitott pont
 
