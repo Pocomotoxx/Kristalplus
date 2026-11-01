@@ -70,8 +70,8 @@ export class ReasoningBank {
     options: { topK?: number; minScore?: number; role?: string } = {}
   ): Promise<ReasoningPattern[]> {
     const searchResults = await this.codex.search(queryText, {
-      topK: options.topK || 3,
-      minScore: options.minScore || 0.25,
+      topK: options.topK ?? 3,
+      minScore: options.minScore ?? 0.25, // `||` here turned an explicit 0 back into 0.25
       namespace: this.namespace,
     });
 

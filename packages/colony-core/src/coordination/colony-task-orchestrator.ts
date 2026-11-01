@@ -1,5 +1,6 @@
 import { ColonyMember, ColonyTask, TaskPriority, TaskStatus, AgentRole } from '../types.js';
 import { ColonyRegistry } from './colony-registry.js';
+import { OutcomeReport, validateQuality } from '../chief/outcome.js';
 import { MessageBus } from '../message-bus.js';
 
 export interface CreateTaskOptions {
@@ -156,13 +157,16 @@ export class ColonyTaskOrchestrator {
     await this.messageBus.publish(`task:${status}`, agentId, { taskId });
   }
 
-  public async completeTask(taskId: string, agentId: string, outputResult?: unknown): Promise<void> {
+  public async completeTask(taskId: string, agentId: string, outputResult?: unknown, report: OutcomeReport = {}): Promise<void> {
     const task = this.tasks.get(taskId);
     if (!task) throw new Error(`Task '${taskId}' not found`);
+    if (report.quality !== undefined) validateQuality(report.quality);
 
     task.status = 'completed';
     task.outputResult = outputResult;
     task.completedAt = Date.now();
+    if (report.quality !== undefined) task.quality = report.quality;
+    if (report.verifiedByTest) task.verifiedByTest = true;
 
     this.registry.completeTask(agentId, taskId);
 
@@ -179,13 +183,16 @@ export class ColonyTaskOrchestrator {
     }
   }
 
-  public async failTask(taskId: string, agentId: string, error: string): Promise<void> {
+  public async failTask(taskId: string, agentId: string, error: string, report: OutcomeReport = {}): Promise<void> {
     const task = this.tasks.get(taskId);
     if (!task) throw new Error(`Task '${taskId}' not found`);
+    if (report.quality !== undefined) validateQuality(report.quality);
 
     task.status = 'failed';
     task.error = error;
     task.completedAt = Date.now();
+    if (report.quality !== undefined) task.quality = report.quality;
+    if (report.verifiedByTest) task.verifiedByTest = true;
 
     this.registry.completeTask(agentId, taskId);
 

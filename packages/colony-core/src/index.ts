@@ -15,6 +15,7 @@ export * from './safe-git.js';
 export * from './chief/member-stats.js';
 export * from './chief/scoring.js';
 export * from './chief/health.js';
+export * from './chief/outcome.js';
 export * from './colony-hub.js';
 
 // Memory & Vector Codex

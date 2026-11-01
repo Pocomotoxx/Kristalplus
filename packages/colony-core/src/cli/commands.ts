@@ -38,7 +38,8 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   member list | member preset standard    list members; add the built-in roles a colony is missing
   next --as <role|memberId>              take the next task for that role (with memory context)
   done <taskId> --result <text>           complete a task; a real, non-empty result is required
-  fail <taskId> --error <text>            mark a task failed
+                                          [--quality 0..1] [--verified-by-test]   what you report; the colony learns from it but cannot check it
+  fail <taskId> --error <text>            mark a task failed  [--quality 0..1: how far it got]
   propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous] [--timeout-min M] [--data text]
   topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
   check                                   run gates BEFORE acting: [--command TEXT] [--text TEXT] [--file PATH [--diff-lines N] [--threshold N]]
@@ -129,6 +130,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         allow: { type: 'string' },
         'diff-lines': { type: 'string' },
         threshold: { type: 'string' },
+        quality: { type: 'string' },
+        'verified-by-test': { type: 'boolean' },
         'queue-depth': { type: 'string' },
         'long-wait-min': { type: 'string' },
         approve: { type: 'boolean' },
@@ -289,14 +292,22 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       if (!task) throw new CliError(`task '${taskId ?? ''}' not found`);
       if (!OPEN_STATUSES.includes(task.status)) throw new CliError(`task '${task.id}' is ${task.status}, not open`);
       const agentId = task.assignedAgentId!;
+      let quality: number | undefined;
+      if (values.quality !== undefined) {
+        quality = Number(values.quality);
+        if (!Number.isFinite(quality) || quality < 0 || quality > 1) throw new CliError('--quality must be a number between 0 and 1');
+      }
+      const report = { quality, verifiedByTest: Boolean(values['verified-by-test']) };
+      if (command === 'fail' && report.verifiedByTest) throw new CliError('--verified-by-test only goes with `done`');
+      const reported = { quality: quality ?? null, verifiedByTest: report.verifiedByTest, note: 'Quality and the test label are the host\'s statements; the colony does not measure or check them.' };
 
       if (command === 'fail') {
         if (!values.error?.trim()) throw new CliError('--error <text> is required');
-        await hub.orchestrator.failTask(task.id, agentId, values.error);
+        await hub.orchestrator.failTask(task.id, agentId, values.error, report);
         hub.claims.close(task.id, 'failed', agentId, Date.now());
-        log('task.failed', task.id, { memberId: agentId, errorChars: values.error.length });
+        log('task.failed', task.id, { memberId: agentId, errorChars: values.error.length, reportedQuality: quality ?? null });
         await session.save();
-        return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!) });
+        return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!), reported });
       }
 
       if (!values.result?.trim()) throw new CliError('--result <text> is required and must not be empty');
@@ -304,12 +315,12 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         throw new CliError(`task '${task.id}' requires an approved consensus proposal first`);
       }
       const before = new Map(hub.orchestrator.getAllTasks().map((t) => [t.id, t.status]));
-      await hub.orchestrator.completeTask(task.id, agentId, values.result);
+      await hub.orchestrator.completeTask(task.id, agentId, values.result, report);
       hub.claims.close(task.id, 'completed', agentId, Date.now());
-      log('task.completed', task.id, { memberId: agentId, resultChars: values.result.length });
+      log('task.completed', task.id, { memberId: agentId, resultChars: values.result.length, reportedQuality: quality ?? null, reportedVerifiedByTest: report.verifiedByTest });
       const unblocked = hub.orchestrator.getAllTasks().filter((t) => before.get(t.id) === 'pending' && t.status === 'assigned');
       await session.save();
-      return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!), unblocked: unblocked.map(summarizeTask) });
+      return reply({ task: summarizeTask(hub.orchestrator.getTask(task.id)!), unblocked: unblocked.map(summarizeTask), reported });
     }
 
     case 'check': {

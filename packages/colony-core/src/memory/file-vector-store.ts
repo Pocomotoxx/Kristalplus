@@ -22,6 +22,8 @@ export class FileVectorStore implements IVectorStore {
   private storagePath: string;
   private docs = new Map<string, MemoryDocument>();
   private isLoaded = false;
+  private loading?: Promise<void>;
+  private writeChain: Promise<void> = Promise.resolve();
   private readonly mode: 'linear' | 'hnsw' | 'auto';
   private readonly hnswThreshold: number;
   /** Built on demand from the stored documents; null when not needed or unusable (mixed dimensions). */
@@ -60,7 +62,17 @@ export class FileVectorStore implements IVectorStore {
     this.index?.remove(id);
   }
 
-  private async ensureLoaded(): Promise<void> {
+  /**
+   * Load the file once. The load is memoized as a promise: two callers that start together must
+   * wait for the same load. Before, the second one cleared the map after the first had already
+   * added its documents, and those documents vanished.
+   */
+  private ensureLoaded(): Promise<void> {
+    this.loading ??= this.load();
+    return this.loading;
+  }
+
+  private async load(): Promise<void> {
     if (this.isLoaded) return;
 
     try {
@@ -79,11 +91,21 @@ export class FileVectorStore implements IVectorStore {
     this.isLoaded = true;
   }
 
-  private async persist(): Promise<void> {
-    const dir = path.dirname(this.storagePath);
-    await fs.mkdir(dir, { recursive: true });
-    const serialized = JSON.stringify(Array.from(this.docs.values()), null, 2);
-    await fs.writeFile(this.storagePath, serialized, 'utf-8');
+  /**
+   * Write the file. Writes run one after another, each saving the state as it is when its turn
+   * comes, so concurrent upserts cannot interleave their writes or overwrite each other with an
+   * older snapshot.
+   */
+  private persist(): Promise<void> {
+    const write = async () => {
+      const dir = path.dirname(this.storagePath);
+      await fs.mkdir(dir, { recursive: true });
+      const serialized = JSON.stringify(Array.from(this.docs.values()), null, 2);
+      await fs.writeFile(this.storagePath, serialized, 'utf-8');
+    };
+    const next = this.writeChain.then(write, write);
+    this.writeChain = next.catch(() => undefined); // a failed write must not block the ones after it
+    return next;
   }
 
   public async upsert(documents: MemoryDocument[]): Promise<void> {

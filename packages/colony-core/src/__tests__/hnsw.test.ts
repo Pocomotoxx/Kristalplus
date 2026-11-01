@@ -192,3 +192,14 @@ test('auto mode stays exact below the threshold and uses the index above it', as
     assert.equal((await store.search(data[7].vector, { topK: 1 }))[0].document.id, 'v7');
   });
 });
+
+test('concurrent upserts on a fresh store keep every document, in memory and on disk', async () => {
+  const data = docs(6, 4, 21);
+  await withStore({ index: 'linear' }, async (store) => {
+    // The first calls start together, before the file was ever read.
+    await Promise.all(data.map((d) => store.upsert([d])));
+    assert.equal(await store.count(), 6);
+    const onDisk = JSON.parse(await fs.readFile((store as unknown as { storagePath: string }).storagePath, 'utf-8'));
+    assert.deepEqual(onDisk.map((d: { id: string }) => d.id).sort(), data.map((d) => d.id).sort());
+  });
+});

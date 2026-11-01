@@ -74,6 +74,10 @@ export interface ColonyTask {
   inputData?: Record<string, unknown>;
   outputResult?: unknown;
   error?: string;
+  /** Quality 0..1 as REPORTED by the host when it closed the task. Not measured by the colony. */
+  quality?: number;
+  /** The host says a test run backed this outcome. The colony cannot check that; it only keeps the label apart. */
+  verifiedByTest?: boolean;
   consensusRequired?: boolean;
   minConsensusQuorum?: number;
   createdAt: number;

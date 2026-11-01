@@ -7,6 +7,8 @@ import { AuditLog } from './audit-log.js';
 import { computeMemberStats } from './chief/member-stats.js';
 import { rankMembers, Ranking, RankOptions } from './chief/scoring.js';
 import { buildHealthReport, HealthReport, HealthThresholds } from './chief/health.js';
+import { outcomeReward } from './chief/outcome.js';
+import { scanText } from './injection-scan.js';
 import { VectorCodex } from './memory/vector-codex.js';
 import { MoERouter, RouteDecision } from './neural/moe-router.js';
 import { ReasoningBank } from './neural/reasoning-bank.js';
@@ -50,11 +52,15 @@ export class ColonyHub {
       const payload = event.payload as { taskId: string; outputResult?: any };
       const task = this.orchestrator.getTask(payload.taskId);
       if (task && task.outputResult) {
+        const problem = `${task.title}: ${task.description}`;
+        const solution = typeof task.outputResult === 'string' ? task.outputResult : JSON.stringify(task.outputResult);
+        // What a host reports as its result comes back later as context: hostile text is not stored.
+        if (this.refuseHostile('reasoning-bank', task.id, `${problem}\n${solution}`)) return;
         await this.reasoningBank.recordPattern({
-          problem: `${task.title}: ${task.description}`,
-          solution: typeof task.outputResult === 'string' ? task.outputResult : JSON.stringify(task.outputResult),
+          problem,
+          solution,
           role: task.requiredRole || 'engineer',
-          successScore: 1.0,
+          successScore: task.quality ?? 1.0,
         });
       }
     });
@@ -91,12 +97,55 @@ export class ColonyHub {
    * reported, not a verified result; a failed task counts as -1.
    */
   private wireRouterLearning(): void {
-    const learn = (taskId: string, reward: number) => {
+    const learn = async (taskId: string, success: boolean) => {
       const task = this.orchestrator.getTask(taskId);
-      if (task?.requiredRole) this.router.recordOutcome(`${task.title} ${task.description}`, task.requiredRole, reward);
+      if (!task) return;
+      if (task.requiredRole) this.router.recordOutcome(`${task.title} ${task.description}`, task.requiredRole, outcomeReward(success, task.quality));
+      await this.recordOutcomeMemory(task, success);
     };
-    this.bus.subscribe('task:completed', async (event: ColonyEvent<unknown>) => learn((event.payload as { taskId: string }).taskId, 0.5));
-    this.bus.subscribe('task:failed', async (event: ColonyEvent<unknown>) => learn((event.payload as { taskId: string }).taskId, -1));
+    this.bus.subscribe('task:completed', (event: ColonyEvent<unknown>) => learn((event.payload as { taskId: string }).taskId, true));
+    this.bus.subscribe('task:failed', (event: ColonyEvent<unknown>) => learn((event.payload as { taskId: string }).taskId, false));
+  }
+
+  /**
+   * Keep a structured note of how a task ended in the `outcomes` namespace, failures too.
+   * The free-text result and error are NOT stored here; the reasoning bank keeps a completed task's
+   * result, behind the same hostile-text check.
+   */
+  private async recordOutcomeMemory(task: ColonyTask, success: boolean): Promise<void> {
+    const text = [
+      `Task: ${task.title}`,
+      `Role: ${task.requiredRole ?? 'unspecified'}`,
+      `Outcome: ${success ? 'completed' : 'failed'} (as reported by the host)`,
+      `Reported quality: ${task.quality ?? 'not reported'}`,
+      `Backed by a test run (the host's statement): ${task.verifiedByTest ? 'yes' : 'no'}`,
+      `Description: ${task.description}`,
+    ].join('\n');
+    if (this.refuseHostile('outcomes', task.id, text)) return;
+    await this.codex.storeDocuments([
+      {
+        id: `outcome_${task.id}`,
+        text,
+        namespace: 'outcomes',
+        metadata: {
+          taskId: task.id,
+          success,
+          quality: task.quality ?? null,
+          verifiedByTest: Boolean(task.verifiedByTest),
+          role: task.requiredRole ?? null,
+          memberId: task.assignedAgentId ?? null,
+          durationMs: task.startedAt !== undefined && task.completedAt !== undefined ? task.completedAt - task.startedAt : null,
+        },
+      },
+    ]);
+  }
+
+  /** True (and an audit entry) when `text` looks hostile; the caller then stores nothing. */
+  private refuseHostile(store: string, taskId: string, text: string): boolean {
+    const scan = scanText(text);
+    if (scan.verdict !== 'hostile') return false;
+    this.audit.append({ type: 'memory.refused', aggregateId: taskId, actor: 'hub', payload: { store, verdict: scan.verdict, threats: scan.threats.map((t) => t.type) } }, Date.now());
+    return true;
   }
 
   /**

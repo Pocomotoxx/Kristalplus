@@ -49,7 +49,7 @@ A beépített tagok így 6-ról 11-re nőnek (`director`, `architect`, `engineer
 
 ## Fázisok
 
-> **Állapot:** a P0, a P1 és a P2 kész (2026-11-01), 178 teszt zöld. Az eredmények a fázisok szakaszainak végén.
+> **Állapot:** a P0, a P1, a P2 és a P4 kész (2026-11-01), 193 teszt zöld. Az eredmények a fázisok szakaszainak végén.
 
 ### P0 – Előkészítés (kicsi, kód nélkül)
 
@@ -101,6 +101,8 @@ A régi pontszám súlyai: képesség 0,30, terhelés 0,20, teljesítmény 0,25,
 - `done --quality 0..1` (nem kötelező). Jutalom a régi képlettel: siker esetén `minőség × 0,8 + 0,2`, kudarcnál `minőség × 0,3`.
 - Betáplálás a routerbe (ma +0,5/−1 fix) és a tagstatisztikába; kimenet a memóriába egy `outcomes` névtérbe.
 - **Őszinteség:** a minőséget a host adja meg. A jutalom és a statisztika „jelentett", nem ellenőrzött, a kimenetben is így címkézve. Az egyetlen ellenőrzött jel a `tester` által futtatott teszt, amelyet külön mezőben lehet rögzíteni (`--verified-by-test`, ami szintén a host állítása, de a címkéje elkülönül).
+
+**P4 eredménye (kész):** `chief/outcome.ts`; `done --quality 0..1 --verified-by-test`, `fail --quality 0..1`. A jutalom: siker `0,2 + 0,8 × minőség` (megadás nélkül 0,5), kudarc `-(1 - 0,3 × minőség)` (megadás nélkül -1). **Eltérés a régitől:** a régi kudarc-jutalom `minőség × 0,3` volt, ami sosem negatív, tehát a hibázó szerep felé mozgatta a tanulót; itt minden kudarc negatív. A minőség a feladaton tárolt, a router, a Reasoning Bank pontszáma és a tagstatisztika (`avgQuality`, `qualityReports`, `verifiedCompleted`) használja; a kiosztás teljesítmény-összetevője 70% sikerarány + 30% átlagminőség, ha van jelentett minőség (heurisztikus). Az `outcomes` névtérbe minden lezárt feladatról (a hibásról is) strukturált jegyzet kerül, a szabad szöveges eredmény és hibaüzenet nélkül. A `--verified-by-test` külön címke, **nincs súlya**, és a host állítása marad: a kolónia nem tudja ellenőrizni. **Két hibát találtam közben, és javítottam:** (1) a `FileVectorStore` versenyhelyzete: két egyszerre induló írás közül a második betöltés törölte az első dokumentumait, és az egyidejű mentések felülírhatták egymást (a regressziós teszt a régi kódon elbukik); (2) a `ReasoningBank.recallPatterns` az explicit `minScore: 0`-t 0,25-re cserélte (`||`). **Rés zárva:** a `done --result` szövege eddig szűrés nélkül került a Reasoning Bankba, az `aidefence` kapuja csak a `memory add`-ot védte; most a hostile szöveg nem tárolódik, a visszautasítás az auditnaplóba kerül.
 
 ### P5 – Deputy: eseményvezérelt felügyelet és tartás (hold)
 

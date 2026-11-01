@@ -92,7 +92,9 @@ function components(task: ColonyTask, member: ColonyMember, stats: MemberStats |
   const capability = clamp01(0.5 + (task.requiredRole && member.role === task.requiredRole ? 0.3 : 0) + 0.2 * covered);
 
   const load = clamp01(1 - member.currentTaskIds.length / Math.max(1, member.capabilities.maxConcurrentTasks));
-  const performance = stats?.successRate ?? 0.5;
+  // Performance: the smoothed success rate; when the host reported qualities, 30% of it is their mean.
+  const rate = stats?.successRate ?? 0.5;
+  const performance = stats?.avgQuality != null ? 0.7 * rate + 0.3 * stats.avgQuality : rate;
   const health = clamp01(1 - 0.3 * (stats?.staleClaims ?? 0));
   return { capability, load, performance, health, availability: AVAILABILITY[member.status] };
 }
