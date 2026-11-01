@@ -49,10 +49,19 @@ A beépített tagok így 6-ról 11-re nőnek (`director`, `architect`, `engineer
 
 ## Fázisok
 
+> **Állapot:** a P0 és a P1 kész (2026-11-01), 163 teszt zöld. A P0 eredményei a P0 szakasz végén, a P1 részletei a P1 szakasz végén.
+
 ### P0 – Előkészítés (kicsi, kód nélkül)
 
 - Elolvasni a hiányzó részeket: Queen 870–1100 és 1560–1700, `unified-coordinator` `assignTask` és `scoreAgentForTask` (801–905), `message-bus.ts`, `domain/`, `application/`. Ha a `message-bus.ts` tud valamit, ami a Colony `MessageBus`-ából hiányzik (prioritás, visszaigazolás, holtlevél-sor), az külön tétel.
 - **Tagstatisztika alapja:** a főkönyvből és az auditnaplóból levezetett mutatók tagonként (befejezett, hibás, átlagos időtartam, utolsó tevékenység). Nem új tár, a meglévő adatokból számolt.
+
+**P0 eredménye (elolvasva):**
+- **Queen 870–1100.** A komplexitás: 0,3 alap + 0,1 részfeladatonként + 0,05 függőségenként, prioritásszorzó (kritikus 1,3 … háttér 0,8), típuspótlék, leírás hossza legfeljebb +0,2, legfeljebb 1,0. Az időbecslés: típusalap × (0,5 + 1,5 × komplexitás) + a részfeladatok fele. Mind kézzel megadott szám. A régiben van `background` prioritás, a Colonyban nincs. A hash-alapú „beágyazás" a régi kódban 768 dimenziós szóhash: ugyanaz a gyengeség, mint a Colony mostani beágyazásáé (szóegyezés, nem jelentés).
+- **`unified-coordinator` `assignTask` / `scoreAgentForTask` (801–905).** Egy másik pontozás: 100 alap, +50 típusegyezés, −20 × terhelés, szorozva az egészséggel, +10 × sikerarány, −5 × átlagos végrehajtási perc. **A régi rendszerben két, egymástól eltérő pontozás élt egymás mellett** (ez és a Queen 0,30/0,20/0,25/0,15/0,10-es súlyozása). A Colony a Queen-félét vette át, mert az összetevőkre bontva magyarázható.
+- **`message-bus.ts` (737 sor).** Nem a Colony `MessageBus`-ának megfelelője: ügynökök közti, pont-pont üzenetsor prioritással, visszaigazolással (`requiresAck`), lejárattal és újrapróbálkozással. A Colony busza téma-alapú értesítés. A régi ahhoz kellene, ha a tagok *postaládát* kapnának (üzenet egy tagnak). Ez nincs a tervben; ha igény lesz rá, új tétel.
+- **`domain/` és `application/` (kb. 2070 sor).** DDD-burok az ügynök- és feladat-entitások körül (`Agent`, `Task`, repository-felületek, parancsok). A Colony `ColonyRegistry` és `ColonyTaskOrchestrator` ugyanezt adja, átvenni való nincs.
+- **Tagstatisztika:** a feladatokból és a foglalásokból számolt, nem tárolt (`chief/member-stats.ts`).
 
 ### P1 – Szerepek és pontozás
 
@@ -66,6 +75,8 @@ A régi pontszám súlyai: képesség 0,30, terhelés 0,20, teljesítmény 0,25,
 - **Viselkedésváltozás (döntés: igen):** a pontozás váltja fel a mai „legkevésbé terhelt" kiosztást a `tryDispatchTask`-ban. Holtversenynél a tag azonosítója dönt.
 - **Összekötés a foglalásokkal:** az elavult foglalásnál a `claim sweep` kiírja a legjobb átvevő tartalék tagot.
 - Teszt: súlyok, holtverseny, tartalék, régi és új kiosztás összevetése, az új szerepek betöltése, a 6 tagos régi főkönyv épségben marad.
+
+**P1 eredménye (kész):** új szerepek (`auditor`, `researcher`, `writer`, `exobiologist`) és 11 beépített profil `sampling` javaslattal; `chief/member-stats.ts`, `chief/scoring.ts`; `colony score`, `colony member list|preset standard`; a kiosztás pontoz (`ColonyTaskOrchestrator.setRanker`); a `claim sweep` megnevezi a legjobb átvevőt (üres, ha nincs más jogosult tag, nem találja ki). Az `auditor` és az `exobiologist` **tanácsadó szerep** (`ADVISORY_ROLES`): csak név szerint kérve kap feladatot, a szavazók közül az `exobiologist` kimarad. Eltérések a tervtől: az auditor is kikerült a hallgatólagos kiosztásból (a függetlensége miatt), és a `member preset standard` már a P1-ben kész (a P9 csak a `legacy-15` sablont és az ideiglenes tagokat adja hozzá). Ismert korlát: a „képesség" összetevő csak szerepegyezést és az előírt képességek lefedését méri, a feladat szövegét nem veti össze a tag profiljával.
 
 ### P2 – Egészségjelentés
 

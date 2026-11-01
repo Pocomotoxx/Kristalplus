@@ -11,7 +11,18 @@ export type AgentRole =
   | 'tester'
   | 'analyst'
   | 'security'
+  | 'auditor'
+  | 'researcher'
+  | 'writer'
+  | 'exobiologist'
   | 'custom';
+
+/**
+ * Roles that only receive a task when it asks for them by name. Left in the open pool, the
+ * auditor would lose its independence by doing ordinary work, and the exobiologist would be handed
+ * routine tasks it is not meant for. Neither counts as an implicit candidate in dispatch.
+ */
+export const ADVISORY_ROLES: readonly AgentRole[] = ['auditor', 'exobiologist'];
 
 export type AgentStatus = 'idle' | 'busy' | 'voting' | 'offline' | 'error';
 

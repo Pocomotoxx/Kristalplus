@@ -1,4 +1,4 @@
-import { ColonyTask, TaskPriority, TaskStatus, AgentRole } from '../types.js';
+import { ColonyMember, ColonyTask, TaskPriority, TaskStatus, AgentRole } from '../types.js';
 import { ColonyRegistry } from './colony-registry.js';
 import { MessageBus } from '../message-bus.js';
 
@@ -21,10 +21,16 @@ export class ColonyTaskOrchestrator {
   private tasks = new Map<string, ColonyTask>();
   private registry: ColonyRegistry;
   private messageBus: MessageBus;
+  /** Orders the eligible candidates, best first. Without one, the least busy member goes first. */
+  private ranker?: (task: ColonyTask, candidates: ColonyMember[]) => ColonyMember[];
 
   constructor(registry: ColonyRegistry, messageBus: MessageBus) {
     this.registry = registry;
     this.messageBus = messageBus;
+  }
+
+  public setRanker(ranker: ((task: ColonyTask, candidates: ColonyMember[]) => ColonyMember[]) | undefined): void {
+    this.ranker = ranker;
   }
 
   public async createTask(options: CreateTaskOptions): Promise<ColonyTask> {
@@ -103,7 +109,10 @@ export class ColonyTaskOrchestrator {
       return false;
     }
 
-    const selectedAgent = candidates[0];
+    const selectedAgent = (this.ranker ? this.ranker(task, candidates) : candidates)[0];
+    if (!selectedAgent) {
+      return false;
+    }
 
     // Assign
     task.status = 'assigned';

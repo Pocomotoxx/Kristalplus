@@ -1,4 +1,4 @@
-import { AgentRole, AgentStatus, ColonyMember, ColonyAgentCapabilities } from '../types.js';
+import { ADVISORY_ROLES, AgentRole, AgentStatus, ColonyMember, ColonyAgentCapabilities } from '../types.js';
 
 export interface RegisterMemberOptions {
   id?: string;
@@ -110,6 +110,11 @@ export class ColonyRegistry {
 
       // Check role if specified
       if (requirements.role && member.role !== requirements.role) {
+        return false;
+      }
+
+      // Advisory roles are never an implicit candidate: the task has to ask for them
+      if (!requirements.role && ADVISORY_ROLES.includes(member.role)) {
         return false;
       }
 

@@ -4,6 +4,8 @@ import { ColonyTaskOrchestrator, CreateTaskOptions } from './coordination/colony
 import { ConsensusEngine } from './consensus/consensus-engine.js';
 import { ClaimLedger } from './coordination/claim-ledger.js';
 import { AuditLog } from './audit-log.js';
+import { computeMemberStats } from './chief/member-stats.js';
+import { rankMembers, Ranking, RankOptions } from './chief/scoring.js';
 import { VectorCodex } from './memory/vector-codex.js';
 import { MoERouter, RouteDecision } from './neural/moe-router.js';
 import { ReasoningBank } from './neural/reasoning-bank.js';
@@ -56,6 +58,19 @@ export class ColonyHub {
       }
     });
     this.wireRouterLearning();
+
+    // Dispatch picks by score instead of "least busy first".
+    this.orchestrator.setRanker((task, candidates) => {
+      const ranking = this.rankFor(task, candidates);
+      const byId = new Map(candidates.map((m) => [m.id, m]));
+      return ranking.ranked.map((s) => byId.get(s.memberId)!);
+    });
+  }
+
+  /** Score the members for a task. `members` defaults to everyone in the colony. */
+  public rankFor(task: ColonyTask, members: ColonyMember[] = this.registry.getAllMembers(), options?: RankOptions): Ranking {
+    const stats = computeMemberStats(this.registry.getAllMembers(), this.orchestrator.getAllTasks(), this.claims.list());
+    return rankMembers(task, members, stats, options);
   }
 
   /**

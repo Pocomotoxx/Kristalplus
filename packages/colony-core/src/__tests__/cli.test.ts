@@ -36,11 +36,11 @@ test('boot seeds the built-in members once and reports UNVERIFIABLE outside git'
   assert.equal(first.code, 0);
   assert.equal(first.out.boot.status, 'UNVERIFIABLE');
   assert.equal(first.out.boot.revision, 'unknown');
-  assert.equal(first.out.colony.totalMembers, 6);
+  assert.equal(first.out.colony.totalMembers, 11);
   assert.ok(first.out.protocol.length > 0);
 
   const second = await run('boot');
-  assert.equal(second.out.colony.totalMembers, 6);
+  assert.equal(second.out.colony.totalMembers, 11);
   assert.ok(second.out.boot.evidence.some((e: any) => e.path === '.colony/ledger.json' && /^[0-9a-f]{64}$/.test(e.sha256)));
 });
 
@@ -158,15 +158,15 @@ test('propose --strategy derives the quorum from the active members and validate
   assert.match((await run('propose', id, 't', '--as', 'engineer', '--strategy', 'majority', '--quorum', '2')).out.error, /not both/);
 
   const byz = await run('propose', id, 'ship it?', '--as', 'engineer', '--strategy', 'byzantine');
-  assert.equal(byz.out.proposal.voters, 6);
-  assert.equal(byz.out.proposal.quorum, 4); // f = 1 for six voters, quorum floor(7 / 2) + 1
+  assert.equal(byz.out.proposal.voters, 10); // eleven members, the exobiologist does not vote
+  assert.equal(byz.out.proposal.quorum, 7); // f = 3 for ten voters, quorum floor(13 / 2) + 1
 
   const maj = (await run('propose', id, 'again?', '--as', 'engineer', '--strategy', 'majority')).out.proposal;
-  assert.equal(maj.quorum, 4);
-  for (const who of ['reviewer', 'tester', 'security']) {
+  assert.equal(maj.quorum, 6);
+  for (const who of ['reviewer', 'tester', 'security', 'architect', 'auditor']) {
     await run('vote', maj.id, '--as', who, '--approve', '--reason', 'checked');
   }
-  const last = await run('vote', maj.id, '--as', 'architect', '--approve', '--reason', 'design fits');
+  const last = await run('vote', maj.id, '--as', 'analyst', '--approve', '--reason', 'numbers hold');
   assert.equal(last.out.proposal.status, 'approved');
   assert.equal((await run('done', id, '--result', 'shipped')).code, 0);
 });
@@ -177,7 +177,7 @@ test('topology prints the graph, finds paths and validates its options', async (
 
   const star = await run('topology');
   assert.equal(star.out.topology.leader, 'member_director');
-  assert.equal(star.out.topology.edges.length, 5);
+  assert.equal(star.out.topology.edges.length, 10);
   assert.equal(star.out.connected, true);
 
   const tree = await run('topology', '--type', 'tree', '--fanout', '2', '--from', 'member_security', '--to', 'member_tester');

@@ -23,7 +23,8 @@ A korábbi „raj” (swarm) helyett mindenhol **kolónia** (colony) a terminol�
 - **Foglalások (claims):** a `next` foglalást nyit a feladatra, a `done` / `fail` lezárja. Ha a gazdagép-munkamenet elhal, a foglalás elavul, és másik tag átveheti, vagy a gazda átadhatja. Az idő mindig paraméter, nincs időzítő és véletlen, ezért az egész visszajátszható.
 - **Topológia:** a tagok kapcsolati gráfja (`mesh`, `star`, `tree`, `hybrid`), determinisztikusan: ugyanazokból a tagokból mindig ugyanaz a gráf. Vezetőválasztás, szomszédok, legrövidebb út.
 - **Memória (Vector Codex):** szolgáltatófüggetlen embedding-felület, koszinusz-hasonlóságú vektortár névterekkel, fájlalapú perzisztencia a `.colony/memory.json` fájlban. A keresés alapból pontos (lineáris), 500 vektor fölött determinisztikus HNSW-gráf gyorsítja (`index: 'linear' | 'hnsw' | 'auto'`). A gráf nincs mentve, a tárolt dokumentumokból épül újra, mindig ugyanúgy.
-- **Ágensek:** beépített profilok (Director, Architect, Coder, Reviewer, Tester, Security) és zod-alapú, típusbiztos eszköztár.
+- **Ágensek:** 11 beépített profil (Director, Architect, Coder, Reviewer, Tester, Security, Auditor, Researcher, Analyst, Writer, Exobiologist) és zod-alapú, típusbiztos eszköztár. Az Auditor és az Exobiologist **tanácsadó** szerep: csak olyan feladatot kap, amely név szerint kéri, a kiosztás nem teszi rájuk magától. Az Exobiologist nem szavaz. A profil `sampling` mezője (hőmérséklet, Top-P) csak javaslat a hostnak: a mag nem hív modellt, így nem tudja beállítani, és nem tudja ellenőrizni, hogy betartották-e.
+- **Kiosztás pontozással (Colony Chief, P1):** a feladatot nem a legkevésbé terhelt tag kapja, hanem a legjobb pontszámú: képesség 0,30, terhelés 0,20, teljesítmény 0,25, egészség 0,15, elérhetőség 0,10. A súlyok a régi rendszerből jönnek, **heurisztikusak**, nem mért értékek. A teljesítmény a főkönyvből számolt, simított sikerarány (jelentett „kész", nem ellenőrzött minőség). Holtversenynél a tag azonosítója dönt.
 - **Tanulás:** MoE-router és Reasoning Bank, amely a korábbi tapasztalatokat visszatáplálja. A router a szabályalapú pontszámra szavankénti, kimenetből tanult súlyokat ad (determinisztikus összeg, nincs beágyazásmodell és véletlen). Amit tanul, azt a host jelentette, nem ellenőrzött minőség.
 - **Host-vezérelt működés:** a `colony` parancssori eszköz JSON-t ír ki, így bármelyik host használhatja. A magnak nincs szüksége modellszolgáltatóra.
 - **Boot:** a `colony boot` betölti és ellenőrzi az állapotfájlokat és a szabályfájlokat, feloldja a git-revíziót, és állapotot jelent (`LOADED`, `UNVERIFIABLE`, `BLOCKED`). Boot nélkül a munkaparancsok nem futnak.
@@ -65,6 +66,8 @@ node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres ere
 | `fail <id> --error <szöveg>` | Hibásnak jelöli a feladatot. |
 | `propose <id> <téma> --as <tag>` | Szavazást indít (`--quorum N` vagy `--strategy majority\|supermajority\|byzantine\|unanimous`, `--timeout-min`, alapértelmezés: 60 perc). Stratégiánál a szavazók a nem offline és nem hibás tagok. |
 | `topology` | A tagok kapcsolati gráfja (`--type mesh\|star\|tree\|hybrid`, `--fanout`, `--degree`, `--from` és `--to` a legrövidebb úthoz). Csak olvas. |
+| `score <feladat>` | A tagok rangsora a feladatra összetevőkre bontva, az elsődleges és legfeljebb két tartalék tag, és hogy a többi miért nem jöhet szóba. |
+| `member list\|preset standard` | Tagok listája; a hiányzó beépített szerepek pótlása egy régebbi főkönyvben (idempotens). A boot csak üres kolóniát tölt fel. |
 | `claim list\|sweep` | Ki mit foglal (`list`, csak olvas). A `sweep` stealable-re állítja az elavult (30 perc tevékenység nélkül) és a túl régen blokkolt (60 perc) foglalásokat. |
 | `claim heartbeat\|block\|unblock\|release <feladat> --as <tag>` | Életjel (`--progress 0..100`; a stealable foglalást visszaveszi), blokkolás (`--reason`), feloldás, lemondás (azonnal átvehető). |
 | `claim steal <feladat> --as <tag>` | Stealable foglalás átvétele a türelmi idő (10 perc) után, a tag kapacitásán belül. A feladat új gazdát kap. |
@@ -107,10 +110,10 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 
 ## Ismert hiányok
 
-- A `colony-core` tesztjei (`pnpm test`, 145 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
+- A `colony-core` tesztjei (`pnpm test`, 163 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
 - A szabályok csak kötelező készletből állnak, és mind a bootban töltődnek be. Feladathoz kötött szabálybetöltésre (útválasztóra) szándékosan nincs szükség.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
-- A beépített tagok (6 szerep) fixek, a CLI-ből nem lehet újat felvenni.
+- A beépített tagok (11 szerep) fixek; a `member preset standard` csak pótolja a hiányzókat. Egyedi tag felvétele és az ideiglenes tagok még nincsenek (P9 a [tervben](docs/QUEEN-PORT-PLAN.md)).
 - A `plant.md` V. és VI. fázisa nincs leírva, és nincs bennük kész kód.
 - A `legacy/ruflo` mappából még nem döntöttük el, melyik plugin és csomag kerül át a Colonyba, és melyik törlendő.
 - A régi Ruflo `LICENSE` fájlja nincs a másolatban (lásd [legacy/README.md](legacy/README.md)).

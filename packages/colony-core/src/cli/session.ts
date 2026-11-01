@@ -235,16 +235,28 @@ export class ColonySession {
   /** Register the built-in profiles as members when the colony has none yet. */
   public seedBuiltinMembers(): number {
     if (this.hub.registry.getAllMembers().length > 0) return 0;
+    return this.addMissingBuiltinMembers().length;
+  }
+
+  /**
+   * Register the built-in profiles that are not members yet, by id. Idempotent. Boot only seeds an
+   * empty colony; an existing colony gets the newer roles through `member preset standard`.
+   */
+  public addMissingBuiltinMembers(): string[] {
+    const added: string[] = [];
     for (const [key, profile] of Object.entries(BUILTIN_AGENT_PROFILES)) {
+      const id = `member_${key}`;
+      if (this.hub.registry.getMember(id)) continue;
       this.hub.registry.register({
-        id: `member_${key}`,
+        id,
         name: profile.name,
         role: profile.role,
         capabilities: { tools: profile.capabilities, maxConcurrentTasks: profile.maxConcurrentTasks },
         metadata: { profileId: profile.id },
       });
+      added.push(id);
     }
-    return Object.keys(BUILTIN_AGENT_PROFILES).length;
+    return added;
   }
 
   /**

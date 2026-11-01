@@ -23,7 +23,7 @@ class CliError extends Error {
   }
 }
 
-const ROLES: AgentRole[] = ['director', 'architect', 'engineer', 'reviewer', 'tester', 'analyst', 'security', 'custom'];
+const ROLES: AgentRole[] = ['director', 'architect', 'engineer', 'reviewer', 'tester', 'analyst', 'security', 'auditor', 'researcher', 'writer', 'exobiologist', 'custom'];
 const PRIORITIES: TaskPriority[] = ['low', 'normal', 'high', 'critical'];
 const PRIORITY_RANK: Record<TaskPriority, number> = { critical: 0, high: 1, normal: 2, low: 3 };
 const OPEN_STATUSES = ['assigned', 'in_progress', 'review', 'consensus'];
@@ -33,7 +33,9 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   boot                                    load the colony, report boot status, print the work protocol
   status                                  members, tasks, open proposals
   task add <title> <description>          [--role R] [--after id,id] [--priority P] [--consensus QUORUM]
-  next --as <role|memberId>               take the next task for that role (with memory context)
+  score <taskId>                          rank the members for a task (heuristic weights), with backups and why the others cannot
+  member list | member preset standard    list members; add the built-in roles a colony is missing
+  next --as <role|memberId>              take the next task for that role (with memory context)
   done <taskId> --result <text>           complete a task; a real, non-empty result is required
   fail <taskId> --error <text>            mark a task failed
   propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous] [--timeout-min M] [--data text]
@@ -271,6 +273,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         task: hub.orchestrator.getTask(task.id),
         member: { id: member.id, role: member.role },
         instructions: profile?.systemPrompt ?? null,
+        // Advice only: the colony cannot set sampling or check that the host followed it.
+        samplingAdvice: profile?.sampling ?? null,
         memoryContext: memory.map((r) => ({ id: r.document.id, namespace: r.document.namespace, text: r.document.text, score: r.score })),
       });
     }
@@ -348,6 +352,30 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       await session.save();
       const output = { ok: decision !== 'block', decision, results, ...(warnings.length ? { warnings } : {}) };
       return { code: decision === 'block' ? 3 : 0, output };
+    }
+
+    case 'score': {
+      const task = sub ? hub.orchestrator.getTask(sub) : undefined;
+      if (!task) throw new CliError(`task '${sub ?? ''}' not found`);
+      return reply({
+        task: summarizeTask(task),
+        ranking: hub.rankFor(task),
+        note: 'The weights and component formulas are heuristic (carried over from the legacy Queen), not fitted to data. Performance is the smoothed share of finished tasks the host reported as completed; it is not a verified quality measure.',
+      });
+    }
+
+    case 'member': {
+      if (sub === 'list') {
+        return reply({ members: hub.registry.getAllMembers().map((m) => ({ id: m.id, role: m.role, status: m.status, tasks: m.currentTaskIds, maxConcurrentTasks: m.capabilities.maxConcurrentTasks })) });
+      }
+      if (sub === 'preset') {
+        if (positionals[2] !== 'standard') throw new CliError('usage: member preset standard');
+        const added = session.addMissingBuiltinMembers();
+        for (const id of added) log('member.added', id, { preset: 'standard' });
+        await session.save();
+        return reply({ added, total: hub.registry.getAllMembers().length });
+      }
+      throw new CliError('usage: member list | member preset standard');
     }
 
     case 'scan': {
@@ -466,7 +494,14 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
             const changed = hub.claims.sweep(now);
             for (const c of changed) log('claim.stealable', c.taskId, { holderId: c.holderId, reason: c.stealableReason });
             await session.save();
-            return reply({ markedStealable: changed.map((c) => ({ taskId: c.taskId, holderId: c.holderId, reason: c.stealableReason, graceEndsAt: c.graceEndsAt })) });
+            return reply({
+              markedStealable: changed.map((c) => {
+                const task = hub.orchestrator.getTask(c.taskId);
+                // The best other member who could take it over, by the same score as dispatch.
+                const next = task ? hub.rankFor(task, undefined, { exclude: [c.holderId] }).primary : null;
+                return { taskId: c.taskId, holderId: c.holderId, reason: c.stealableReason, graceEndsAt: c.graceEndsAt, suggestedTakeover: next ? { memberId: next.memberId, score: next.total } : null };
+              }),
+            });
           }
 
           case 'heartbeat': {
@@ -577,7 +612,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       if (quorum !== undefined && (!Number.isInteger(quorum) || quorum < 1)) throw new CliError('--quorum must be a positive integer');
       if (!(timeoutMin > 0)) throw new CliError('--timeout-min must be positive');
       // Eligible voters: every member that is neither offline nor in error.
-      const voters = hub.registry.getAllMembers().filter((m) => m.status !== 'offline' && m.status !== 'error').length;
+      const voters = hub.registry.getAllMembers().filter((m) => m.status !== 'offline' && m.status !== 'error' && m.role !== 'exobiologist').length;
 
       const proposal = await hub.consensus.submitProposal({
         taskId: task.id,
@@ -602,6 +637,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       if (!(confidence >= 0 && confidence <= 1)) throw new CliError('--confidence must be between 0 and 1');
       if (!sub) throw new CliError('usage: vote <proposalId> --as <member> ...');
       const [voter] = resolveMembers(session, values.as);
+      if (voter.role === 'exobiologist') throw new CliError('the exobiologist is an advisory role and does not vote; its hypotheses go through `anomaly`');
       const proposal = await hub.consensus.castVote(sub, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason: values.reason });
       log('proposal.vote', proposal.id, { voterId: voter.id, approve: Boolean(values.approve), confidence, status: proposal.status });
       await session.save();
