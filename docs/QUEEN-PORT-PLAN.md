@@ -42,7 +42,7 @@ A Queen hat dolgot csinál: **elemez** → **kioszt** → **pontoz** → **figye
 
 A régi pontszám súlyai: képesség 0,30, terhelés 0,20, teljesítmény 0,25, egészség 0,15, elérhetőség 0,10.
 
-- Új: `director/scoring.ts`, `colony score <feladat>`: minden tag pontszáma összetevőkre bontva.
+- Új: `chief/scoring.ts`, `colony score <feladat>`: minden tag pontszáma összetevőkre bontva.
 - Összetevők a Colony adataiból: képesség = szerep és eszköz egyezés a feladattal; terhelés = `currentTaskIds / maxConcurrentTasks`; teljesítmény = tényleges sikerarány a P0 statisztikából; egészség = hibás/offline állapot és elavult foglalások; elérhetőség = `idle`/`busy`.
 - Elsődleges tag + legfeljebb 2 tartalék (küszöb 0,3, mint a régiben).
 - **Viselkedésváltozás:** a `tryDispatchTask` ma a legkevésbé terhelt tagot választja. A pontozás ezt váltja fel. Holtversenynél a tag azonosítója dönt (determinisztikus).
@@ -51,7 +51,7 @@ A régi pontszám súlyai: képesség 0,30, terhelés 0,20, teljesítmény 0,25,
 
 ### P2 – Elemzés, felbontás, végrehajtási terv
 
-- `director/analysis.ts`, `colony plan <feladat>` (csak olvas) és `colony plan <feladat> --apply` (valódi részfeladatokat hoz létre `parentId`/`dependencies` kitöltésével; a mezők már megvannak a `ColonyTask`-ban).
+- `chief/analysis.ts`, `colony plan <feladat>` (csak olvas) és `colony plan <feladat> --apply` (valódi részfeladatokat hoz létre `parentId`/`dependencies` kitöltésével; a mezők már megvannak a `ColonyTask`-ban).
 - Felbontási sablonok a régiből: kódolás (terv → megvalósítás → teszt), tesztelés, kutatás, koordináció; az egyszerű feladat (200 karakter alatt, dokumentáció, ellenőrzés) nem bomlik.
 - **Végrehajtási stratégia a függőségi gráfból:** a részfeladatok hullámokra bontása (mi futhat egyszerre). A régi öt stratégianevet (sequential, parallel, pipeline, fan-out-fan-in, hybrid) a gráf alakjából vezetjük le, nem külön konfigurációból.
 - A mintaillesztést a meglévő Reasoning Bank adja.
@@ -60,7 +60,7 @@ A régi pontszám súlyai: képesség 0,30, terhelés 0,20, teljesítmény 0,25,
 
 ### P3 – Egészségjelentés
 
-- `director/health.ts`, `colony health`: tagok, „domainek", szűk keresztmetszetek (sorhossz 10 fölött, hibás tagok, elavult foglalások), figyelmeztetések, javaslatok.
+- `chief/health.ts`, `colony health`: tagok, „domainek", szűk keresztmetszetek (sorhossz 10 fölött, hibás tagok, elavult foglalások), figyelmeztetések, javaslatok.
 - **A régi hiány:** a domain-egészségnél az `avgResponseTimeMs` és az `errorRate` egyaránt fixen 0 volt ("Would need tracking"). Itt a foglalásokból (átfutási idő) és az auditnaplóból (hibás/összes) valósan számoljuk.
 - A „domain" fogalom: a régi öt (queen, security, core, integration, support) szerepekre leképezve. A 15 ügynökös fix hierarchiát (`spawnFullHierarchy`) nem emeljük át; a 6 beépített tag marad.
 - Kimarad: `coordinationLatencyMs` (futásidejű mérőszám, itt nincs értelme).
@@ -70,7 +70,7 @@ A régi pontszám súlyai: képesség 0,30, terhelés 0,20, teljesítmény 0,25,
 A Colony ma: `majority`, `supermajority`, `byzantine`, `unanimous`. Hiányzik a Queen két módja.
 
 - **`weighted`:** a szavazat súlya = a tag teljesítménye × egészsége (a régi képlet). A régi kódban ez sokáig hatástalan volt (a súlyok sosem jutottak el a számláláshoz, mindegyik súlyozott döntés sima többség lett; egy 2026-os javítás hozta rendbe). Itt a súly a szavazat leadásakor kerül a szavazatba és az auditnaplóba, a számlálás tesztelve van arra, hogy a súly valóban számít.
-- **`director-override`:** egyoldalú döntés, csak három típusra (vészhelyzeti művelet, tag leállítása, prioritás-felülbírálat), a régi korlátozással. **Ez nem szavazás, hanem hatalom**, ezért: csak `--as` igazgató szerepű tag, kötelező indoklás, mindig az auditnaplóba kerül, és a `status` külön jelzi. A te döntésed, hogy kell-e (lásd lent).
+- **`chief-override`:** egyoldalú döntés, csak három típusra (vészhelyzeti művelet, tag leállítása, prioritás-felülbírálat), a régi korlátozással. **Ez nem szavazás, hanem hatalom**, ezért: csak `--as` igazgató szerepű tag, kötelező indoklás, mindig az auditnaplóba kerül, és a `status` külön jelzi. A te döntésed, hogy kell-e (lásd lent).
 - A `propose` kiterjesztése, tesztek a súlyozott kvórumra és a visszaélésre (nem igazgató, hiányzó indoklás, nem engedett típus).
 
 ### P5 – Tanulás a kimenetből
@@ -112,7 +112,7 @@ A federation-hub „swarm" fogalma több telepítés. Hálózat nélkül ez csak
 | P1 | P0 | ~300 sor + tesztek | közepes (megváltozik a kiosztás) |
 | P2 | P1 | ~400 sor + tesztek | közepes (a heurisztikák minősége) |
 | P3 | P0 | ~250 sor + tesztek | alacsony |
-| P4 | P1 | ~250 sor + tesztek | **magas** a `director-override` miatt |
+| P4 | P1 | ~250 sor + tesztek | **magas** a `chief-override` miatt |
 | P5 | P0 | ~150 sor + tesztek | alacsony |
 | P6 | P1 | ~250 sor + tesztek | alacsony |
 | P7 | P1 | ~200 sor + tesztek | alacsony |
@@ -120,10 +120,12 @@ A federation-hub „swarm" fogalma több telepítés. Hálózat nélkül ez csak
 
 Ajánlott menet: P0 → P1 → P3 → P2 → P5 → P4 → P6 → P7. Mindegyik külön commit, tesztekkel és a README, migrációs térkép és leltár frissítésével, ahogy eddig.
 
-## Döntések, amelyek a tieid
+## Döntések
 
-1. **Név.** A README ma azt írja: Queen → `ColonyHub`. A hangyakolóniának is van királynője, a Queen így a kolónia nyelvén is helyes. Marad-e `Queen` (szerep és modul), vagy `Director`? Javaslat: a szerep marad `director` (már ez van a kódban), a modul neve `director/`.
-2. **Kiosztás.** A pontozás váltsa-e fel a mai „legkevésbé terhelt" kiválasztást (P1)? Javaslat: igen.
-3. **`director-override`.** Kell-e egyoldalú döntés? Javaslat: igen, de csak három típusra, indoklással, auditnaplóval. Ha nem, a P4 csak a `weighted`.
-4. **A 15 ügynökös hierarchia.** Javaslat: nem, a 6 beépített tag marad, a „domain" csak csoportosítás.
-5. **Becslések.** Elfogadod, hogy a régi időtartam- és komplexitásszámok `heuristic` jelöléssel, felülírható alapértékként kerülnek át?
+| # | Kérdés | Döntés (2026-11-01) |
+|---|---|---|
+| 1 | Név | **Colony Chief** (`ColonyChief`, modul: `chief/`). A tagszerep `director` marad, ő hívhatja a `chief-override`-ot. |
+| 2 | A pontozás váltsa fel a mai kiosztást | Igen. |
+| 3 | `chief-override` | Igen: három típusra, indoklással, auditnaplóval, csak igazgató szerepű tagnak. |
+| 4 | 15 ügynökös hierarchia | **Nyitott.** Alapértelmezésnek nem javasolt (üres tagokra osztana feladatot, és felfújná a szavazók számát), választható sablonnak igen. |
+| 5 | Becslések | Igen: `heuristic` jelöléssel, felülírható alapértékként. |
