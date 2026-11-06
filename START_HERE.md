@@ -20,4 +20,3 @@ Másold be a hostnak, és a végén cseréld ki a **[FELADAT]** részt:
 - A `<projektmappa>` az a mappa, amelyben a munka folyik. Az állapot (`.colony/`) és a szabályok (`.colony/rules/`) oda kerülnek, az első boot létrehozza őket. A parancsok az eszköz mappájától függetlenül futnak.
 - A `boot` kiírja az opcionális diagnosztika eredményét és a helyi szabályfájlokat; a fájlok eltérése figyelmeztetés, nem munkakapu.
 - A parancsok teljes listája: [README.md](README.md).
-

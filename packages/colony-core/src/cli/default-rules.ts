@@ -28,4 +28,3 @@ export const DEFAULT_MANIFEST = {
   version: 1,
   mandatory: Object.keys(DEFAULT_RULES),
 };
-

@@ -293,4 +293,3 @@ test('next and vote reject an unknown role or member', async () => {
   assert.match((await run('next', '--as', 'wizard')).out.error, /no member or role/);
   assert.equal((await run('next')).code, 1);
 });
-

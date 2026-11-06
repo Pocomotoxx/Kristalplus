@@ -331,4 +331,3 @@ export class ColonySession {
     return text === null ? null : (JSON.parse(text) as BootRecord);
   }
 }
-

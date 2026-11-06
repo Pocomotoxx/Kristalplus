@@ -853,4 +853,3 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       throw new CliError(`unknown command '${command}'\n${USAGE}`);
   }
 }
-
