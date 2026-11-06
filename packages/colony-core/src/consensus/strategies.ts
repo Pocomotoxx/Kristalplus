@@ -5,9 +5,9 @@
  * the replication protocol: the colony has one ledger, so only the decision rules are needed.
  */
 
-export type QuorumStrategy = 'majority' | 'supermajority' | 'byzantine' | 'unanimous';
+export type QuorumStrategy = 'majority' | 'supermajority' | 'byzantine' | 'unanimous' | 'weighted';
 
-export const QUORUM_STRATEGIES: readonly QuorumStrategy[] = ['majority', 'supermajority', 'byzantine', 'unanimous'];
+export const QUORUM_STRATEGIES: readonly QuorumStrategy[] = ['majority', 'supermajority', 'byzantine', 'unanimous', 'weighted'];
 
 /** Number of approving votes needed among `voters` eligible voters. */
 export function requiredApprovals(strategy: QuorumStrategy, voters: number): number {
@@ -26,6 +26,8 @@ export function requiredApprovals(strategy: QuorumStrategy, voters: number): num
     }
     case 'unanimous':
       return voters;
+    case 'weighted':
+      throw new Error('weighted quorum requires member weights');
   }
 }
 

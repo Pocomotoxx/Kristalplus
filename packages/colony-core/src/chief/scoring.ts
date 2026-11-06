@@ -17,6 +17,7 @@
 import { ADVISORY_ROLES } from '../types.js';
 import type { AgentStatus, ColonyMember, ColonyTask } from '../types.js';
 import type { MemberStats } from './member-stats.js';
+import { isEphemeralExpired } from '../coordination/ephemeral-members.js';
 
 export interface ScoreWeights {
   capability: number;
@@ -73,6 +74,7 @@ const AVAILABILITY: Record<AgentStatus, number> = { idle: 1, voting: 0.5, busy: 
 /** Why `member` cannot take `task` right now, or null when it can. Mirrors `ColonyRegistry.findCandidates`. */
 export function ineligibleReason(task: ColonyTask, member: ColonyMember): string | null {
   if (member.status === 'offline' || member.status === 'error') return `member is ${member.status}`;
+  if (isEphemeralExpired(member)) return 'temporary member has expired';
   if (task.requiredRole && member.role !== task.requiredRole) return `role is ${member.role}, the task needs ${task.requiredRole}`;
   if (!task.requiredRole && ADVISORY_ROLES.includes(member.role)) return `${member.role} only takes a task that asks for that role`;
   if (member.currentTaskIds.length >= member.capabilities.maxConcurrentTasks) return 'member is at capacity';

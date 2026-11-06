@@ -1,5 +1,7 @@
 # Ruflo → Colony migrációs térkép
 
+> Frissítés: a `colony boot` opcionális diagnosztika. A CLI a munkamenetet az első normál parancsnál tölti be; a bootállapot és a szabályeltérések nem blokkolják a munkát.
+
 Állapot: 2026-10-31. Forrás: a repó tényleges tartalma és a [plant.md](../plant.md).
 
 ## Kész (`packages/colony-core`)
@@ -20,10 +22,10 @@ Ellenőrizve: tiszta telepítés után `pnpm build` hibátlan, és a `pnpm test`
 ## Host-vezérelt irány (2026-10-31)
 
 Nincs API-kulcs: a host (Cowork) maga a modell, a mag csak főkönyv. Ehhez készült:
-- `cli/session.ts`: állapot betöltése és mentése (`.colony/ledger.json`, `.colony/memory.json`), boot (`LOADED` / `UNVERIFIABLE` / `BLOCKED`), revízió-feloldás.
+- `cli/session.ts`: állapot betöltése és mentése (`.colony/ledger.json`, `.colony/memory.json`), opcionális boot-diagnosztika (`LOADED` / `UNVERIFIABLE` / `BLOCKED`), revízió-feloldás.
 - `cli/commands.ts` és `cli.ts`: a `colony` parancs (boot, status, task, next, done, fail, propose, vote, memory).
 - `snapshot()` / `restore()` a nyilvántartásban, az orchestratorban és a konszenzusmotorban.
-- Szabálybetöltés a bootban: `.colony/rules/manifest.json` + kötelező szabályfájlok, hash-elve, driftvédelemmel (`cli/default-rules.ts` a kezdőkészlet).
+- Opcionális szabálybetöltés a bootban: `.colony/rules/manifest.json` + helyi útmutatók, hash-elve; az eltérés csak figyelmeztetés (`cli/default-rules.ts` a kezdőkészlet).
 - 15 CLI-teszt a teljes munkafolyamatra és a szabályokra (összesen 30 teszt, mind zöld).
 
 Következmény: a modellszolgáltatós részek kivezetve (lásd a 2. szakaszt).
@@ -64,7 +66,7 @@ Az A lista csomagjai a törlés előtt ellenőrizve: egyik sem függött a tör�
 
 | Csomag | Állapot |
 |---|---|
-| `swarm` | **Részben átvéve:** topológia (`topology.ts`), kvórum-stratégiák (`consensus/strategies.ts`), CLI: `topology` és `propose --strategy`. A nagy koordinátorokat (queen, unified, attention, worker-dispatch, federation-hub) még át kell nézni. A részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
+| `swarm` | **Részben átvéve:** topológia (`topology.ts`), kvórum-stratégiák (`consensus/strategies.ts`), CLI: `topology` és `propose --strategy`. A P8 figyelem-maradékát önálló, szóalapú jelentésszintézisként átültettük; a P7, P9 és P11 fázisok még hátra vannak. A futtató- és föderációs koordinátorok nem kerülnek át. A részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `claims` | **Részben átvéve:** `coordination/claim-ledger.ts` (foglalás, életjel, blokkolás, elavulás, átvétel, átadás), CLI: `claim ...`. Az összevonás és a szövetséges (federated) tár nem. A részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `memory` | **Részben átvéve:** `memory/hnsw-index.ts` (determinisztikus HNSW), a `FileVectorStore` használja. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `guidance` | **Részben átvéve:** `gates.ts` (kapuk) és a `check` parancs. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
@@ -72,7 +74,7 @@ Az A lista csomagjai a törlés előtt ellenőrizve: egyik sem függött a tör�
 | `shared` | **Részben átvéve:** `audit-log.ts` (hash-láncolt, csak hozzáfűzhető napló), `audit` parancs. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `neural` | **Részben átvéve:** a MoE-router kimenetből tanul, terheléselosztási statisztika, `route` parancs. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `aidefence` | **Átvéve (a fenyegetésfelismerés):** `injection-scan.ts`, `scan` parancs, a `memory add` kapuja. A tanuló szolgáltatás (`threat-learning-service`) nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
-| `swarm` – koordinátorok (Colony Chief) | **Terv kész, P0–P6 megvalósítva:** 11 szerep, pontozásos kiosztás, tagstatisztika, `score`, `member`, `health`, `plan` (elemzés és felbontás), kimenetből tanulás (`--quality`), Deputy (`watch`, `hold`), Critic-kör (`review`). A többi fázis ( szavazási módok, összegzés, anomália-sor, ideiglenes tagok) hátra van. Lásd: [QUEEN-PORT-PLAN.md](QUEEN-PORT-PLAN.md). |
+| `swarm` – koordinátorok (Colony Chief) | **Terv kész, P0–P6 megvalósítva:** 11 szerep, pontozásos kiosztás, tagstatisztika, `score`, `member`, `health`, `plan` (elemzés és felbontás), kimenetből tanulás (`--quality`), Deputy (`watch`, `hold`), Critic-kör (`review`). A P8 összegzés, a P7 súlyozott szavazása és a P9 ideiglenes tagjai elkészültek; hátra van a Chief override, az anomália-sor. Lásd: [QUEEN-PORT-PLAN.md](QUEEN-PORT-PLAN.md). |
 | `plugin-agent-federation` | **Csak a személyesadat-szűrő átvéve:** `redact.ts`, `redact` parancs. A föderáció maga (társak, átvitel, WireGuard, bizalmi szintek) hálózati gépezet, a Colonyban nincs rá hely. Törlésre javasolt, a döntés a tiéd. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `performance` | Még nem kezdtük el. |
 

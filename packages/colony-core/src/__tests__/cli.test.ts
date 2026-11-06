@@ -23,11 +23,41 @@ async function project(name: string): Promise<(...args: string[]) => Promise<{ c
   };
 }
 
-test('commands refuse to run before boot', async () => {
+test('commands run without boot and initialize built-in members on first use', async () => {
   const run = await project('noboot');
   const r = await run('status');
-  assert.equal(r.code, 2);
-  assert.match(r.out.error, /not booted/);
+  assert.equal(r.code, 0);
+  assert.equal(r.out.colony.totalMembers, 11);
+  const added = await run('task', 'add', 'No boot needed', 'work starts directly', '--role', 'engineer');
+  assert.equal(added.code, 0);
+});
+
+test('synthesize compares completed child reports without calling a model', async () => {
+  const run = await project('synthesize');
+  const created = await run('task', 'add', 'Research topic', 'x'.repeat(220), '--role', 'researcher');
+  const parentId = created.out.task.id;
+  const plan = await run('plan', parentId, '--kind', 'research', '--apply');
+  assert.equal(plan.code, 0);
+  assert.equal(plan.out.children.length, 4);
+
+  const results = [
+    'Sources show stable patterns and a reliable baseline.',
+    'Evidence shows stable patterns with a reliable baseline.',
+    'The report supports stable patterns and a reliable baseline.',
+    'Verification confirms a reliable baseline and stable patterns.',
+  ];
+  for (const [index, child] of plan.out.children.entries()) {
+    const next = await run('next', '--as', child.requiredRole);
+    assert.equal(next.code, 0);
+    assert.equal(next.out.task.id, child.id);
+    assert.equal((await run('done', child.id, '--result', results[index])).code, 0);
+  }
+
+  const synthesis = await run('synthesize', parentId);
+  assert.equal(synthesis.code, 0);
+  assert.equal(synthesis.out.synthesis.heuristic, true);
+  assert.equal(synthesis.out.synthesis.reports.length, 4);
+  assert.ok(synthesis.out.synthesis.agreement.terms.includes('stable'));
 });
 
 test('boot seeds the built-in members once and reports UNVERIFIABLE outside git', async () => {
@@ -56,8 +86,7 @@ test('a corrupt ledger blocks boot and revokes an earlier successful boot', asyn
   assert.ok(blocked.out.boot.problems.length > 0);
 
   const after = await run('status');
-  assert.equal(after.code, 2);
-  assert.match(after.out.error, /BLOCKED/);
+  assert.equal(after.code, 1); // malformed state remains an error; the boot record is not a gate
 });
 
 test('a memory file that is not an array blocks boot', async () => {
@@ -171,6 +200,44 @@ test('propose --strategy derives the quorum from the active members and validate
   assert.equal((await run('done', id, '--result', 'shipped')).code, 0);
 });
 
+test('weighted proposal records Colony performance and health weights in votes and audit', async () => {
+  const run = await project('weighted-strategy');
+  const id = (await run('task', 'add', 'Weighted decision', 'needs weighted review', '--role', 'engineer', '--consensus', '2')).out.task.id;
+  const proposal = (await run('propose', id, 'accept?', '--as', 'engineer', '--strategy', 'weighted')).out.proposal;
+  assert.equal(proposal.strategy, 'weighted');
+  assert.equal(Object.keys(proposal.voterWeights).length, proposal.voters);
+  assert.ok(proposal.quorum > Object.values(proposal.voterWeights).reduce((a: number, b: number) => a + b, 0) / 2);
+  const reviewerId = (await run('member', 'list')).out.members.find((member: any) => member.role === 'reviewer').id;
+  const vote = await run('vote', proposal.id, '--as', reviewerId, '--approve', '--reason', 'reviewed');
+  assert.equal(vote.code, 0);
+  assert.equal(vote.out.voteWeight, proposal.voterWeights[reviewerId]);
+  assert.equal(vote.out.proposal.votes[0].weight, vote.out.voteWeight);
+  assert.equal(vote.out.proposal.status, 'open');
+});
+
+test('member sweep expires temporary members and makes their work recoverable', async () => {
+  const run = await project('ephemeral-member');
+  const created = await run('member', 'add', 'Short-lived helper', '--role', 'custom', '--ephemeral', '--ttl-min', '0.0002'); assert.equal(created.code, 0);
+  const memberId = created.out.member.id;
+  const added = await run('task', 'add', 'Temporary work', 'can be reassigned', '--role', 'custom'); assert.equal(added.out.task.assignedAgentId, memberId);
+  const next = await run('next', '--as', memberId); assert.equal(next.out.task.id, added.out.task.id);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  const swept = await run('member', 'sweep'); assert.equal(swept.code, 0); assert.equal(swept.out.expired[0].memberId, memberId);
+  assert.deepEqual(swept.out.expired[0].markedStealable, [added.out.task.id]);
+  assert.equal((await run('claim', 'list')).out.claims[0].status, 'stealable');
+  assert.equal((await run('member', 'list')).out.members.find((m: any) => m.id === memberId).status, 'offline');
+  assert.deepEqual((await run('member', 'sweep')).out.expired, []);
+});
+
+test('member sweep requeues an unstarted temporary assignment', async () => {
+  const run = await project('ephemeral-unstarted');
+  const created = await run('member', 'add', 'Short-lived helper', '--role', 'custom', '--ephemeral', '--ttl-min', '0.0002'); const memberId = created.out.member.id;
+  const added = await run('task', 'add', 'Queued after expiry', 'not started yet', '--role', 'custom'); assert.equal(added.out.task.assignedAgentId, memberId);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  const swept = await run('member', 'sweep'); assert.deepEqual(swept.out.expired[0].requeued, [added.out.task.id]);
+  assert.equal((await run('status')).out.tasks.find((t: any) => t.id === added.out.task.id).status, 'pending');
+});
+
 test('topology prints the graph, finds paths and validates its options', async () => {
   const run = await project('topology');
   await run('boot');
@@ -246,15 +313,15 @@ test('a project-edited rule survives a re-boot (starter rules never overwrite)',
   assert.ok(r.out.rules.some((x: any) => x.text === '# Saját szabály\n'));
 });
 
-test('editing a rule after boot revokes work until the next boot', async () => {
+test('editing a rule after boot reports drift without blocking work', async () => {
   const run = await project('rules-drift');
   await run('boot');
   assert.equal((await run('status')).code, 0);
 
   await fs.appendFile(rulesPath('rules-drift', '10-evidence.md'), '- extra sor\n', 'utf-8');
   const drift = await run('status');
-  assert.equal(drift.code, 2);
-  assert.match(drift.out.error, /rule files changed/);
+  assert.equal(drift.code, 0);
+  assert.ok(drift.out.warnings.some((warning: string) => /rule files changed/.test(warning)));
 
   assert.equal((await run('boot')).code, 0);
   assert.equal((await run('status')).code, 0);
@@ -270,7 +337,7 @@ test('a missing, empty or out-of-directory mandatory rule blocks boot', async ()
   assert.equal(missing.out.boot.status, 'BLOCKED');
   assert.match(missing.out.boot.problems.join(' '), /20-consensus\.md/);
   assert.equal(missing.out.rules, undefined);
-  assert.equal((await run('status')).code, 2);
+  assert.equal((await run('status')).code, 0);
 
   await fs.writeFile(rulesPath('rules-missing', '20-consensus.md'), '   \n', 'utf-8');
   assert.match((await run('boot')).out.boot.problems.join(' '), /empty rule file/);

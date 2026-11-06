@@ -126,6 +126,8 @@ export interface ConsensusProposal<T = unknown> {
   /** Set when the quorum was derived from a strategy: the number of eligible voters. */
   voters?: number;
   strategy?: string;
+  /** Fixed weights captured at proposal creation, so later history cannot change its result. */
+  voterWeights?: Record<string, number>;
   createdAt: number;
   expiresAt: number;
 }
@@ -134,6 +136,8 @@ export interface ConsensusVote {
   voterId: string;
   approve: boolean;
   confidence: number; // 0.0 - 1.0
+  /** Colony-derived contribution for weighted proposals; other strategies use one vote per member. */
+  weight?: number;
   reason?: string;
   timestamp: number;
 }

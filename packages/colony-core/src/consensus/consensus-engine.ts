@@ -1,6 +1,7 @@
-import { ConsensusProposal, ConsensusVote } from '../types.js';
-import { MessageBus } from '../message-bus.js';
-import { canStillReach, QuorumStrategy, requiredApprovals } from './strategies.js';
+import type { ConsensusProposal, ConsensusVote } from '../types.js';
+import type { MessageBus } from '../message-bus.js';
+import { canStillReach, requiredApprovals } from './strategies.js';
+import type { QuorumStrategy } from './strategies.js';
 
 export interface ProposalOptions<T = unknown> {
   taskId: string;
@@ -11,6 +12,7 @@ export interface ProposalOptions<T = unknown> {
   /** Derive the quorum from the number of eligible voters. Needs `voters`; excludes `quorum`. */
   strategy?: QuorumStrategy;
   voters?: number;
+  voterWeights?: Record<string, number>;
   timeoutMs?: number;
 }
 
@@ -38,7 +40,14 @@ export class ConsensusEngine {
       if (options.quorum !== undefined) throw new Error('pass either a quorum or a strategy, not both');
       if (options.voters === undefined) throw new Error('a strategy needs the number of eligible voters');
     }
-    const quorum = options.strategy ? requiredApprovals(options.strategy, options.voters!) : options.quorum || 2;
+    if (options.strategy === 'weighted') {
+      if (!Number.isInteger(options.voters) || options.voters! < 1) throw new Error('weighted strategy needs at least one eligible voter');
+      if (!options.voterWeights || Object.keys(options.voterWeights).length !== options.voters) throw new Error('weighted strategy needs one weight per eligible voter');
+      if (Object.values(options.voterWeights).some((weight) => !Number.isFinite(weight) || weight <= 0)) throw new Error('voter weights must be positive finite numbers');
+    }
+    const quorum = options.strategy === 'weighted'
+      ? Object.values(options.voterWeights!).reduce((sum, weight) => sum + weight, 0) / 2 + Number.EPSILON
+      : options.strategy ? requiredApprovals(options.strategy, options.voters!) : options.quorum || 2;
 
     const proposal: ConsensusProposal<T> = {
       id,
@@ -50,6 +59,7 @@ export class ConsensusEngine {
       status: 'open',
       quorum,
       ...(options.strategy ? { strategy: options.strategy, voters: options.voters } : {}),
+      ...(options.strategy === 'weighted' ? { voterWeights: { ...options.voterWeights } } : {}),
       createdAt: Date.now(),
       expiresAt: Date.now() + timeoutMs,
     };
@@ -93,10 +103,15 @@ export class ConsensusEngine {
       throw new Error(`Proposal '${proposalId}' already has votes from all ${proposal.voters} eligible voters`);
     }
 
+    if (proposal.strategy === 'weighted' && (!proposal.voterWeights || proposal.voterWeights[vote.voterId] === undefined)) {
+      throw new Error(`Member '${vote.voterId}' is not an eligible voter on weighted proposal '${proposalId}'`);
+    }
+
     proposal.votes.set(vote.voterId, {
       voterId: vote.voterId,
       approve: vote.approve,
       confidence: vote.confidence ?? 1.0,
+      ...(proposal.strategy === 'weighted' ? { weight: proposal.voterWeights![vote.voterId] } : {}),
       reason: vote.reason,
       timestamp: Date.now(),
     });
@@ -105,6 +120,7 @@ export class ConsensusEngine {
       proposalId,
       approve: vote.approve,
       confidence: vote.confidence ?? 1.0,
+      ...(proposal.strategy === 'weighted' ? { weight: proposal.voterWeights![vote.voterId] } : {}),
     });
 
     this.evaluateProposal(proposal);
@@ -117,9 +133,10 @@ export class ConsensusEngine {
     const rejections = votes.filter((v) => !v.approve);
 
     // Calculate confidence-weighted approval
-    const totalWeightedApproval = approvals.reduce((sum, v) => sum + v.confidence, 0);
+    const totalWeightedApproval = approvals.reduce((sum, v) => sum + (v.weight ?? v.confidence), 0);
+    const approvalCount = proposal.strategy === 'weighted' ? totalWeightedApproval : approvals.length;
 
-    if (approvals.length >= proposal.quorum) {
+    if (approvalCount >= proposal.quorum) {
       proposal.status = 'approved';
       this.messageBus.publish('consensus:proposal_approved', 'consensus_engine', {
         proposalId: proposal.id,
@@ -129,7 +146,9 @@ export class ConsensusEngine {
       });
     } else if (
       proposal.voters !== undefined
-        ? !canStillReach(approvals.length, rejections.length, proposal.voters, proposal.quorum)
+        ? proposal.strategy === 'weighted'
+          ? totalWeightedApproval + Object.entries(proposal.voterWeights ?? {}).filter(([id]) => !proposal.votes.has(id)).reduce((sum, [, weight]) => sum + weight, 0) < proposal.quorum
+          : !canStillReach(approvals.length, rejections.length, proposal.voters, proposal.quorum)
         : rejections.length > votes.length / 2 && votes.length >= proposal.quorum
     ) {
       proposal.status = 'rejected';

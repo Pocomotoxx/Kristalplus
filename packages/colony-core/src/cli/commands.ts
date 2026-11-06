@@ -13,6 +13,9 @@ import { scanText } from '../injection-scan.js';
 import { REDACT_KINDS, redactText, RedactKind } from '../redact.js';
 import { aggregateDecision, checkDestructive, checkDiffSize, checkSecrets, checkToolAllowed, GateResult } from '../gates.js';
 import { buildTopology, isFullyConnected, shortestPath, TOPOLOGY_TYPES, TopologyType } from '../topology.js';
+import { synthesizeReports } from '../chief/synthesis.js';
+import { computeMemberStats } from '../chief/member-stats.js';
+import { EPHEMERAL_MEMBER_KEY, ephemeralRecord, isEphemeralExpired, markEphemeralSwept } from '../coordination/ephemeral-members.js';
 
 export interface CommandResult {
   code: number;
@@ -26,25 +29,48 @@ class CliError extends Error {
 }
 
 const ROLES: AgentRole[] = ['director', 'architect', 'engineer', 'reviewer', 'tester', 'analyst', 'security', 'auditor', 'researcher', 'writer', 'exobiologist', 'custom'];
+
+// Colony-native compatibility roster: 11 built-in Colony roles plus four locally defined support slots.
+const LEGACY_15_SLOTS: Array<{ key: string; role: AgentRole; label: string }> = [
+  { key: 'director', role: 'director', label: 'Mission director' },
+  { key: 'architect', role: 'architect', label: 'Systems design' },
+  { key: 'engineer', role: 'engineer', label: 'Implementation' },
+  { key: 'reviewer', role: 'reviewer', label: 'Independent review' },
+  { key: 'tester', role: 'tester', label: 'Verification' },
+  { key: 'analyst', role: 'analyst', label: 'Analysis' },
+  { key: 'security', role: 'security', label: 'Security' },
+  { key: 'auditor', role: 'auditor', label: 'Audit' },
+  { key: 'researcher', role: 'researcher', label: 'Research' },
+  { key: 'writer', role: 'writer', label: 'Documentation' },
+  { key: 'exobiologist', role: 'exobiologist', label: 'Anomaly hypotheses' },
+  { key: 'support_a', role: 'custom', label: 'Colony support A' },
+  { key: 'support_b', role: 'custom', label: 'Colony support B' },
+  { key: 'support_c', role: 'custom', label: 'Colony support C' },
+  { key: 'support_d', role: 'custom', label: 'Colony support D' },
+];
 const PRIORITIES: TaskPriority[] = ['low', 'normal', 'high', 'critical'];
 const PRIORITY_RANK: Record<TaskPriority, number> = { critical: 0, high: 1, normal: 2, low: 3 };
 const OPEN_STATUSES = ['assigned', 'in_progress', 'review', 'consensus'];
 
-export const USAGE = `colony <command> [options]    (every command prints JSON; run \`colony boot\` first)
+export const USAGE = `colony <command> [options]    (every command prints JSON; boot is optional)
 
   boot                                    load the colony, report boot status, print the work protocol
   status                                  members, tasks, open proposals
   task add <title> <description>          [--role R] [--after id,id] [--priority P] [--consensus QUORUM] [--review [--max-review-rounds N]]
   review <taskId> --as <reviewer> (--approve|--reject) --reason <text>   a rejection sends the work back; after N rejections (default 3) the task goes on hold for the user
   plan <taskId> [--kind K] [--apply]      analyze a task and propose its steps, waves and strategy; --apply creates them as tasks
+  synthesize <taskId>                    compare completed child reports and return their lexical medoid and outliers
   health [--queue-depth N] [--long-wait-min N]   groups, bottlenecks, alerts, recommendations (read-only, heuristic thresholds)
   score <taskId>                       rank the members for a task (heuristic weights), with backups and why the others cannot
-  member list | member preset standard    list members; add the built-in roles a colony is missing
+  member list | member preset standard|legacy-15    add built-ins or 15 offline Colony template slots
+  member activate <id>                     activate a legacy-15 template member
+  member add <name> --role R --ephemeral --ttl-min N   add a temporary member; member sweep expires it
+  member sweep                            expire temporary members; transfer claims and requeue unstarted tasks
   next --as <role|memberId>              take the next task for that role (with memory context)
   done <taskId> --result <text>           complete a task; a real, non-empty result is required
                                           [--quality 0..1] [--verified-by-test]   what you report; the colony learns from it but cannot check it
   fail <taskId> --error <text>            mark a task failed  [--quality 0..1: how far it got]
-  propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous] [--timeout-min M] [--data text]
+  propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous|weighted] [--timeout-min M] [--data text]
   topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
   check                                   run gates BEFORE acting: [--command TEXT] [--text TEXT] [--file PATH [--diff-lines N] [--threshold N]]
                                           [--tool NAME --allow a,b*]; exit 3 on "block". A gate is a check you call, not an interceptor.
@@ -73,8 +99,7 @@ Global: --dir <path>  project directory (default: current directory)`;
 
 const PROTOCOL = [
   'You (the host) are the model: the colony keeps the ledger, the routing, the votes and the memory.',
-  'The rule files in `rules` are binding for this session; read them in full before starting work.',
-  'Boot proves the state and the rule files were read and hashed. It does not prove that you applied the rules.',
+  'Colony commands load and initialize state as needed; boot is an optional diagnostic command.',
 ];
 
 function resolveMembers(session: ColonySession, who: string | undefined): ColonyMember[] {
@@ -121,6 +146,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         dir: { type: 'string' },
         as: { type: 'string' },
         role: { type: 'string' },
+        name: { type: 'string' },
         after: { type: 'string' },
         priority: { type: 'string' },
         consensus: { type: 'string' },
@@ -164,6 +190,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         ns: { type: 'string' },
         k: { type: 'string' },
         help: { type: 'boolean' },
+        ephemeral: { type: 'boolean' },
+        'ttl-min': { type: 'string' },
       },
     });
   } catch (err: any) {
@@ -191,27 +219,27 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
     };
   }
 
-  const boot = await ColonySession.readBootRecord(dir);
-  if (!boot || boot.status === 'BLOCKED') {
-    throw new CliError(boot ? `last boot was BLOCKED: ${boot.problems.join('; ')}` : 'colony is not booted: run `colony boot`', 2);
-  }
-  const currentRules = await loadRules(dir);
-  const booted = new Map((boot.rules ?? []).map((r) => [r.path, r.sha256]));
-  const drifted =
-    currentRules.problems.length > 0 ||
-    currentRules.rules.length !== booted.size ||
-    currentRules.rules.some((r) => booted.get(r.path) !== r.sha256);
-  if (drifted) throw new CliError('rule files changed, vanished or became unreadable since boot: run `colony boot` again', 2);
-
+  // Boot is optional. When a record exists, retain its diagnostics as warnings only.
+  const boot = await ColonySession.readBootRecord(dir).catch(() => null);
   const warnings: string[] = [];
-  if (resolveRevision(dir).sha !== boot.revision) warnings.push('git revision changed since boot; run `colony boot` again');
+  if (boot) {
+    if (boot.status === 'BLOCKED') warnings.push(`optional boot check reported BLOCKED: ${boot.problems.join('; ')}`);
+    const currentRules = await loadRules(dir);
+    const booted = new Map((boot.rules ?? []).map((r) => [r.path, r.sha256]));
+    const drifted =
+      currentRules.problems.length > 0 ||
+      currentRules.rules.length !== booted.size ||
+      currentRules.rules.some((r) => booted.get(r.path) !== r.sha256);
+    if (drifted) warnings.push('rule files changed since the last optional boot check');
+    if (resolveRevision(dir).sha !== boot.revision) warnings.push('git revision changed since the last optional boot check');
+  }
 
   const session = await ColonySession.open(dir);
   const { hub } = session;
   /** What the Deputy's watch says about this task, right after it was closed. Advice, not a gate. */
   const deputyNotes = (taskId: string) =>
     hub
-      .watch({ focusTaskId: taskId, anchor: boot.audit })
+      .watch({ focusTaskId: taskId, anchor: boot?.audit })
       .findings.filter((f) => f.severity !== 'low')
       .map((f) => ({ kind: f.kind, severity: f.severity, detail: f.detail }));
   const log = (type: string, aggregateId: string, payload: Record<string, unknown> = {}) =>
@@ -439,7 +467,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
 
     case 'watch': {
       if (values.task && !hub.orchestrator.getTask(values.task)) throw new CliError(`task '${values.task}' not found`);
-      const report = hub.watch({ focusTaskId: values.task, anchor: boot.audit });
+      const report = hub.watch({ focusTaskId: values.task, anchor: boot?.audit });
       return reply({
         report,
         note: 'Mechanical checks over the records, with heuristic thresholds. A clean report means these checks found nothing, not that the work is right.',
@@ -522,6 +550,21 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       });
     }
 
+    case 'synthesize': {
+      const task = sub ? hub.orchestrator.getTask(sub) : undefined;
+      if (!task) throw new CliError(`task '${sub ?? ''}' not found`);
+      const children = hub.orchestrator.getAllTasks()
+        .filter((child) => child.parentId === task.id && child.status === 'completed' && child.outputResult !== undefined)
+        .map((child) => ({
+          task: { id: child.id, title: child.title },
+          text: typeof child.outputResult === 'string' ? child.outputResult : (JSON.stringify(child.outputResult) ?? String(child.outputResult)),
+          reporterId: child.assignedAgentId,
+        }))
+        .filter((child) => child.text.trim().length > 0);
+      if (children.length === 0) throw new CliError(`task '${task.id}' has no completed child reports to synthesize`);
+      return reply({ synthesis: synthesizeReports(children) });
+    }
+
     case 'health': {
       const numeric = (name: 'queue-depth' | 'long-wait-min', raw: string | undefined): number | undefined => {
         if (raw === undefined) return undefined;
@@ -548,16 +591,91 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
 
     case 'member': {
       if (sub === 'list') {
-        return reply({ members: hub.registry.getAllMembers().map((m) => ({ id: m.id, role: m.role, status: m.status, tasks: m.currentTaskIds, maxConcurrentTasks: m.capabilities.maxConcurrentTasks })) });
+        return reply({ members: hub.registry.getAllMembers().map((m) => ({ id: m.id, name: m.name, role: m.role, status: m.status, tasks: m.currentTaskIds, maxConcurrentTasks: m.capabilities.maxConcurrentTasks, ...(ephemeralRecord(m) ? { ephemeral: true, expiresAt: ephemeralRecord(m)!.expiresAt } : {}) })) });
       }
       if (sub === 'preset') {
-        if (positionals[2] !== 'standard') throw new CliError('usage: member preset standard');
-        const added = session.addMissingBuiltinMembers();
-        for (const id of added) log('member.added', id, { preset: 'standard' });
+        const preset = positionals[2];
+        if (preset === 'standard') {
+          const added = session.addMissingBuiltinMembers();
+          for (const id of added) log('member.added', id, { preset });
+          await session.save();
+          return reply({ added, total: hub.registry.getAllMembers().length });
+        }
+        if (preset !== 'legacy-15') throw new CliError('usage: member preset standard|legacy-15');
+        const added: string[] = [];
+        for (const slot of LEGACY_15_SLOTS) {
+          const id = `legacy15_${slot.key}`;
+          const existing = hub.registry.getMember(id);
+          if (existing) {
+            if (existing.metadata?.colonyTemplate !== 'legacy-15') throw new CliError(`template member id collision: ${id}`);
+            continue;
+          }
+          const profile = Object.values(BUILTIN_AGENT_PROFILES).find((candidate) => candidate.role === slot.role);
+          const member = hub.registry.register({
+            id, name: `Colony template: ${slot.label}`, role: slot.role,
+            capabilities: profile ? { tools: profile.capabilities, maxConcurrentTasks: profile.maxConcurrentTasks } : undefined,
+            metadata: { colonyTemplate: 'legacy-15', templateSlot: slot.key, activatedByHost: false, ...(profile ? { profileId: profile.id } : {}) },
+          });
+          hub.registry.updateStatus(member.id, 'offline');
+          added.push(member.id);
+          log('member.added', member.id, { preset, role: member.role, initialStatus: 'offline' });
+        }
         await session.save();
-        return reply({ added, total: hub.registry.getAllMembers().length });
+        return reply({ added, total: hub.registry.getAllMembers().length, note: 'Template members remain offline until explicitly activated by the host.' });
       }
-      throw new CliError('usage: member list | member preset standard');
+      if (sub === 'activate') {
+        const id = positionals[2];
+        if (!id) throw new CliError('usage: member activate <templateMemberId>');
+        const member = hub.registry.getMember(id);
+        if (!member) throw new CliError(`member '${id}' not found`);
+        if (member.metadata?.colonyTemplate !== 'legacy-15') throw new CliError('only legacy-15 template members can be activated with this command');
+        if (member.status === 'error') throw new CliError('an errored member cannot be activated');
+        hub.registry.updateStatus(id, 'idle');
+        member.metadata = { ...(member.metadata ?? {}), activatedByHost: true };
+        log('member.activated', id, { template: 'legacy-15' });
+        await session.save();
+        return reply({ member });
+      }
+      if (sub === 'add') {
+        const name = positionals[2] ?? values.name;
+        if (!name?.trim()) throw new CliError('member add needs a non-empty name');
+        if (!values.ephemeral) throw new CliError('member add currently requires --ephemeral');
+        if (!values.role || !ROLES.includes(values.role as AgentRole)) throw new CliError(`--role must be one of ${ROLES.join(', ')}`);
+        const ttlMin = values['ttl-min'] === undefined ? Number.NaN : Number(values['ttl-min']);
+        const due = Date.now() + ttlMin * 60_000;
+        if (!Number.isFinite(ttlMin) || ttlMin <= 0 || !Number.isFinite(due) || due > 8.64e15) throw new CliError('--ttl-min must be a positive finite number within the supported date range');
+        const now = Date.now(), expiresAt = now + ttlMin * 60_000;
+        const slug = name.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'member';
+        const baseId = `ephemeral_${values.role}_${slug}_${now.toString(36)}`;
+        let id = baseId, suffix = 1;
+        while (hub.registry.getMember(id)) id = `${baseId}_${suffix++}`;
+        const member = hub.registry.register({ id, name: name.trim(), role: values.role as AgentRole, metadata: { [EPHEMERAL_MEMBER_KEY]: { expiresAt, createdBy: values.as ?? 'host' } } });
+        log('member.added', member.id, { role: member.role, ephemeral: true, expiresAt }); await session.save();
+        return reply({ member, ephemeral: { expiresAt, ttlMin } });
+      }
+      if (sub === 'sweep') {
+        const now = Date.now();
+        const expired: Array<{ memberId: string; expiresAt: number; markedStealable: string[]; requeued: string[] }> = [];
+        for (const member of hub.registry.getAllMembers()) {
+          const ephemeral = ephemeralRecord(member);
+          if (!ephemeral || now < ephemeral.expiresAt || ephemeral.sweptAt !== undefined) continue;
+          hub.registry.updateStatus(member.id, 'offline');
+          const marked = hub.claims.expireHolder(member.id, now);
+          for (const claim of marked) log('claim.stealable', claim.taskId, { holderId: member.id, reason: claim.stealableReason });
+          const requeued: string[] = [];
+          for (const task of hub.orchestrator.getAllTasks()) {
+            if (task.status !== 'assigned' || task.assignedAgentId !== member.id) continue;
+            const claim = hub.claims.get(task.id); if (claim && claim.status !== 'closed') hub.claims.close(task.id, 'released', member.id, now);
+            await hub.orchestrator.releaseUnstartedTask(task.id, member.id); await hub.orchestrator.tryDispatchTask(task.id); requeued.push(task.id);
+          }
+          markEphemeralSwept(member, now);
+          log('member.expired', member.id, { expiresAt: ephemeral.expiresAt, markedStealable: marked.map(c => c.taskId), requeued });
+          expired.push({ memberId: member.id, expiresAt: ephemeral.expiresAt, markedStealable: marked.map(c => c.taskId), requeued });
+        }
+        await session.save();
+        return reply({ expired, note: 'Expired members stay in the ledger as offline history. Their started work remains available through stealable claims; unstarted assignments return to the queue.' });
+      }
+      throw new CliError('usage: member list | preset standard | add <name> --role R --ephemeral --ttl-min N | sweep');
     }
 
     case 'scan': {
@@ -639,7 +757,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
     case 'audit': {
       if (sub === 'verify') {
         const chain = hub.audit.verify();
-        const anchor = boot.audit;
+        const anchor = boot?.audit;
         const anchored = anchor ? hub.audit.contains(anchor) : null;
         const ok = chain.ok && anchored !== false;
         return {
@@ -726,6 +844,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
           case 'steal': {
             needTask();
             const [member] = resolveMembers(session, values.as);
+            if (member.status === 'offline' || member.status === 'error' || isEphemeralExpired(member)) throw new ClaimError('INELIGIBLE_MEMBER', `member '${member.id}' is not available to take a claim`);
             const { claim, previousHolderId, previousProgress } = hub.claims.steal(taskId, member.id, now, {
               challengerOpenClaims: capacityOf(member).open,
               maxClaims: capacityOf(member).max,
@@ -793,8 +912,18 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const timeoutMin = values['timeout-min'] ? Number(values['timeout-min']) : 60;
       if (quorum !== undefined && (!Number.isInteger(quorum) || quorum < 1)) throw new CliError('--quorum must be a positive integer');
       if (!(timeoutMin > 0)) throw new CliError('--timeout-min must be positive');
-      // Eligible voters: every member that is neither offline nor in error.
-      const voters = hub.registry.getAllMembers().filter((m) => m.status !== 'offline' && m.status !== 'error' && m.role !== 'exobiologist').length;
+      // Freeze the electorate and its Chief-derived weights at proposal creation.
+      const eligible = hub.registry.getAllMembers().filter((m) => m.status !== 'offline' && m.status !== 'error' && m.role !== 'exobiologist');
+      const voters = eligible.length;
+      const voterWeights = strategy === 'weighted'
+        ? Object.fromEntries([...computeMemberStats(hub.registry.getAllMembers(), hub.orchestrator.getAllTasks(), hub.claims.list()).entries()]
+            .filter(([id]) => eligible.some((member) => member.id === id))
+            .map(([id, stats]) => {
+              const performance = stats.avgQuality === null ? stats.successRate : 0.7 * stats.successRate + 0.3 * stats.avgQuality;
+              const health = Math.max(0, Math.min(1, 1 - 0.3 * stats.staleClaims));
+              return [id, Math.round(performance * health * 10000) / 10000] as const;
+            }))
+        : undefined;
 
       const proposal = await hub.consensus.submitProposal({
         taskId: task.id,
@@ -804,6 +933,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         quorum,
         strategy,
         voters: strategy ? voters : undefined,
+        voterWeights,
         timeoutMs: timeoutMin * 60_000,
       });
       await hub.orchestrator.updateTaskProgress(task.id, proposer.id, 'consensus');
@@ -821,9 +951,10 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const [voter] = resolveMembers(session, values.as);
       if (voter.role === 'exobiologist') throw new CliError('the exobiologist is an advisory role and does not vote; its hypotheses go through `anomaly`');
       const proposal = await hub.consensus.castVote(sub, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason: values.reason });
-      log('proposal.vote', proposal.id, { voterId: voter.id, approve: Boolean(values.approve), confidence, status: proposal.status });
+      const recordedVote = proposal.votes.get(voter.id);
+      log('proposal.vote', proposal.id, { voterId: voter.id, approve: Boolean(values.approve), confidence, weight: recordedVote?.weight ?? null, status: proposal.status });
       await session.save();
-      return reply({ proposal: serializeProposal(proposal) });
+      return reply({ proposal: serializeProposal(proposal), voteWeight: recordedVote?.weight ?? null, ...(proposal.strategy === 'weighted' ? { note: 'Weight was captured at proposal creation from ledger-derived performance × health. It is heuristic and reflects outcomes reported by the host.' } : {}) });
     }
 
     case 'memory': {
