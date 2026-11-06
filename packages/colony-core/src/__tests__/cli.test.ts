@@ -247,7 +247,7 @@ test('a project-edited rule survives a re-boot (starter rules never overwrite)',
   assert.ok(r.out.rules.some((x: any) => x.text === '# Saját szabály\n'));
 });
 
-test('editing a rule after boot revokes work until the next boot', async () => {
+test('editing a rule after boot reports drift without blocking work', async () => {
   const run = await project('rules-drift');
   await run('boot');
   assert.equal((await run('status')).code, 0);

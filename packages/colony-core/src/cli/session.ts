@@ -263,8 +263,8 @@ export class ColonySession {
 
   /**
    * Optional diagnostic: load and validate state, seed rules, resolve the revision, record evidence.
-   * LOADED = state valid and revision resolved; UNVERIFIABLE = state valid, revision unknown
-   * (content work allowed, repository mutation not); BLOCKED = a state file is unreadable or malformed.
+   * LOADED = state valid and revision resolved; UNVERIFIABLE = state valid, revision unknown;
+   * BLOCKED = the state or rules are invalid. These statuses are diagnostic, not command gates.
    */
   public static async boot(dir: string): Promise<{ record: BootRecord; session: ColonySession | null; rules: LoadedRule[] }> {
     const stateDir = path.join(dir, STATE_DIR);
@@ -325,7 +325,7 @@ export class ColonySession {
     return { record, session, rules: loaded };
   }
 
-  /** The record of the last successful boot, or null when the colony has not been booted. */
+  /** The last boot diagnostic record, or null when boot has not been run. */
   public static async readBootRecord(dir: string): Promise<BootRecord | null> {
     const text = await readIfExists(path.join(dir, STATE_DIR, BOOT_FILE));
     return text === null ? null : (JSON.parse(text) as BootRecord);

@@ -193,9 +193,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
   // Boot is optional. When a record exists, retain its diagnostics as warnings only.
   const boot = await ColonySession.readBootRecord(dir).catch(() => null);
   const warnings: string[] = [];
-  if (!boot) {
-    warnings.push('optional boot diagnostics have not been recorded');
-  } else {
+  if (boot) {
     if (boot.status === 'BLOCKED') warnings.push(`optional boot check reported BLOCKED: ${boot.problems.join('; ')}`);
     const currentRules = await loadRules(dir);
     const booted = new Map((boot.rules ?? []).map((r) => [r.path, r.sha256]));
