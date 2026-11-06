@@ -29,6 +29,25 @@ class CliError extends Error {
 }
 
 const ROLES: AgentRole[] = ['director', 'architect', 'engineer', 'reviewer', 'tester', 'analyst', 'security', 'auditor', 'researcher', 'writer', 'exobiologist', 'custom'];
+
+// Colony-native compatibility roster: 11 built-in Colony roles plus four locally defined support slots.
+const LEGACY_15_SLOTS: Array<{ key: string; role: AgentRole; label: string }> = [
+  { key: 'director', role: 'director', label: 'Mission director' },
+  { key: 'architect', role: 'architect', label: 'Systems design' },
+  { key: 'engineer', role: 'engineer', label: 'Implementation' },
+  { key: 'reviewer', role: 'reviewer', label: 'Independent review' },
+  { key: 'tester', role: 'tester', label: 'Verification' },
+  { key: 'analyst', role: 'analyst', label: 'Analysis' },
+  { key: 'security', role: 'security', label: 'Security' },
+  { key: 'auditor', role: 'auditor', label: 'Audit' },
+  { key: 'researcher', role: 'researcher', label: 'Research' },
+  { key: 'writer', role: 'writer', label: 'Documentation' },
+  { key: 'exobiologist', role: 'exobiologist', label: 'Anomaly hypotheses' },
+  { key: 'support_a', role: 'custom', label: 'Colony support A' },
+  { key: 'support_b', role: 'custom', label: 'Colony support B' },
+  { key: 'support_c', role: 'custom', label: 'Colony support C' },
+  { key: 'support_d', role: 'custom', label: 'Colony support D' },
+];
 const PRIORITIES: TaskPriority[] = ['low', 'normal', 'high', 'critical'];
 const PRIORITY_RANK: Record<TaskPriority, number> = { critical: 0, high: 1, normal: 2, low: 3 };
 const OPEN_STATUSES = ['assigned', 'in_progress', 'review', 'consensus'];
@@ -43,7 +62,8 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   synthesize <taskId>                    compare completed child reports and return their lexical medoid and outliers
   health [--queue-depth N] [--long-wait-min N]   groups, bottlenecks, alerts, recommendations (read-only, heuristic thresholds)
   score <taskId>                       rank the members for a task (heuristic weights), with backups and why the others cannot
-  member list | member preset standard    list members; add the built-in roles a colony is missing
+  member list | member preset standard|legacy-15    add built-ins or 15 offline Colony template slots
+  member activate <id>                     activate a legacy-15 template member
   member add <name> --role R --ephemeral --ttl-min N   add a temporary member; member sweep expires it
   member sweep                            expire temporary members; transfer claims and requeue unstarted tasks
   next --as <role|memberId>              take the next task for that role (with memory context)
@@ -574,11 +594,43 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         return reply({ members: hub.registry.getAllMembers().map((m) => ({ id: m.id, name: m.name, role: m.role, status: m.status, tasks: m.currentTaskIds, maxConcurrentTasks: m.capabilities.maxConcurrentTasks, ...(ephemeralRecord(m) ? { ephemeral: true, expiresAt: ephemeralRecord(m)!.expiresAt } : {}) })) });
       }
       if (sub === 'preset') {
-        if (positionals[2] !== 'standard') throw new CliError('usage: member preset standard');
-        const added = session.addMissingBuiltinMembers();
-        for (const id of added) log('member.added', id, { preset: 'standard' });
+        const preset = positionals[2];
+        if (preset === 'standard') {
+          const added = session.addMissingBuiltinMembers();
+          for (const id of added) log('member.added', id, { preset });
+          await session.save();
+          return reply({ added, total: hub.registry.getAllMembers().length });
+        }
+        if (preset !== 'legacy-15') throw new CliError('usage: member preset standard|legacy-15');
+        const added: string[] = [];
+        for (const slot of LEGACY_15_SLOTS) {
+          const id = `legacy15_${slot.key}`;
+          if (hub.registry.getMember(id)) continue;
+          const profile = Object.values(BUILTIN_AGENT_PROFILES).find((candidate) => candidate.role === slot.role);
+          const member = hub.registry.register({
+            id, name: `Colony template: ${slot.label}`, role: slot.role,
+            capabilities: profile ? { tools: profile.capabilities, maxConcurrentTasks: profile.maxConcurrentTasks } : undefined,
+            metadata: { colonyTemplate: 'legacy-15', templateSlot: slot.key, activatedByHost: false, ...(profile ? { profileId: profile.id } : {}) },
+          });
+          hub.registry.updateStatus(member.id, 'offline');
+          added.push(member.id);
+          log('member.added', member.id, { preset, role: member.role, initialStatus: 'offline' });
+        }
         await session.save();
-        return reply({ added, total: hub.registry.getAllMembers().length });
+        return reply({ added, total: hub.registry.getAllMembers().length, note: 'Template members remain offline until explicitly activated by the host.' });
+      }
+      if (sub === 'activate') {
+        const id = positionals[2];
+        if (!id) throw new CliError('usage: member activate <templateMemberId>');
+        const member = hub.registry.getMember(id);
+        if (!member) throw new CliError(`member '${id}' not found`);
+        if (member.metadata?.colonyTemplate !== 'legacy-15') throw new CliError('only legacy-15 template members can be activated with this command');
+        if (member.status === 'error') throw new CliError('an errored member cannot be activated');
+        hub.registry.updateStatus(id, 'idle');
+        member.metadata = { ...(member.metadata ?? {}), activatedByHost: true };
+        log('member.activated', id, { template: 'legacy-15' });
+        await session.save();
+        return reply({ member });
       }
       if (sub === 'add') {
         const name = positionals[2] ?? values.name;

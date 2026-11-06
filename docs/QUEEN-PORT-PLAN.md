@@ -146,7 +146,7 @@ A tiszta szintézismodul 3 egységtesztje lefutott; a teljes csomag buildje és 
 ### P9 – Ideiglenes tagok és sablonok (a federation-hub használható része)
 
 - **Ideiglenes tag – megvalósítva:** `colony member add <név> --role R --ephemeral --ttl-min N`; a lejárat az állapotban tárolódik, nincs háttér-időzítő. A `member sweep` a tagot offline jelöli, a nyitott foglalásait azonnal átvehetővé teszi, az el nem kezdett hozzárendelést újra a sorba teszi. A tag és a feladatai az előzmények megőrzése miatt nem törlődnek. A kiosztás és a claim átvétele kizárja a lejárt tagot.
-- **Sablon – hátra van:** a `standard` pótolja a hiányzó beépített profilokat; a `legacy-15` sablon még nincs. A tervezett sablon 15 offline tagból áll, és host általi aktiválásig nem szavaz és nem kap feladatot.
+- **Sablon – megvalósítva:** `member preset legacy-15` 15 Colony-taghelyet hoz létre (a 11 beépített szerepkör és négy Colony-saját `custom` támogatói hely alapján). A tagok offline állapotúak; a host a `member activate <id>` paranccsal kapcsolhatja be őket. A név, a profil és a feladatkezelés Colony-native; legacy kódot nem másol. A parancs idempotens, az aktiválás és a sablonbővítés auditált.
 - A `broadcast`, `selectOptimalSwarm` és a föderációs szavazás hálózati/több telepítéses: P10.
 
 ### P11 – Anomália-sor és Exobiológus
