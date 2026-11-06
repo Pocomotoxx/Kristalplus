@@ -30,7 +30,7 @@ const PRIORITIES: TaskPriority[] = ['low', 'normal', 'high', 'critical'];
 const PRIORITY_RANK: Record<TaskPriority, number> = { critical: 0, high: 1, normal: 2, low: 3 };
 const OPEN_STATUSES = ['assigned', 'in_progress', 'review', 'consensus'];
 
-export const USAGE = `colony <command> [options]    (every command prints JSON; run \`colony boot\` first)
+export const USAGE = `colony <command> [options]    (every command prints JSON; boot is optional)
 
   boot                                    load the colony, report boot status, print the work protocol
   status                                  members, tasks, open proposals
@@ -73,8 +73,7 @@ Global: --dir <path>  project directory (default: current directory)`;
 
 const PROTOCOL = [
   'You (the host) are the model: the colony keeps the ledger, the routing, the votes and the memory.',
-  'The rule files in `rules` are binding for this session; read them in full before starting work.',
-  'Boot proves the state and the rule files were read and hashed. It does not prove that you applied the rules.',
+  'Colony commands load and initialize state as needed; boot is an optional diagnostic command.',
 ];
 
 function resolveMembers(session: ColonySession, who: string | undefined): ColonyMember[] {
@@ -191,27 +190,29 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
     };
   }
 
-  const boot = await ColonySession.readBootRecord(dir);
-  if (!boot || boot.status === 'BLOCKED') {
-    throw new CliError(boot ? `last boot was BLOCKED: ${boot.problems.join('; ')}` : 'colony is not booted: run `colony boot`', 2);
-  }
-  const currentRules = await loadRules(dir);
-  const booted = new Map((boot.rules ?? []).map((r) => [r.path, r.sha256]));
-  const drifted =
-    currentRules.problems.length > 0 ||
-    currentRules.rules.length !== booted.size ||
-    currentRules.rules.some((r) => booted.get(r.path) !== r.sha256);
-  if (drifted) throw new CliError('rule files changed, vanished or became unreadable since boot: run `colony boot` again', 2);
-
+  // Boot is optional. When a record exists, retain its diagnostics as warnings only.
+  const boot = await ColonySession.readBootRecord(dir).catch(() => null);
   const warnings: string[] = [];
-  if (resolveRevision(dir).sha !== boot.revision) warnings.push('git revision changed since boot; run `colony boot` again');
+  if (!boot) {
+    warnings.push('optional boot diagnostics have not been recorded');
+  } else {
+    if (boot.status === 'BLOCKED') warnings.push(`optional boot check reported BLOCKED: ${boot.problems.join('; ')}`);
+    const currentRules = await loadRules(dir);
+    const booted = new Map((boot.rules ?? []).map((r) => [r.path, r.sha256]));
+    const drifted =
+      currentRules.problems.length > 0 ||
+      currentRules.rules.length !== booted.size ||
+      currentRules.rules.some((r) => booted.get(r.path) !== r.sha256);
+    if (drifted) warnings.push('rule files changed since the last optional boot check');
+    if (resolveRevision(dir).sha !== boot.revision) warnings.push('git revision changed since the last optional boot check');
+  }
 
   const session = await ColonySession.open(dir);
   const { hub } = session;
   /** What the Deputy's watch says about this task, right after it was closed. Advice, not a gate. */
   const deputyNotes = (taskId: string) =>
     hub
-      .watch({ focusTaskId: taskId, anchor: boot.audit })
+      .watch({ focusTaskId: taskId, anchor: boot?.audit })
       .findings.filter((f) => f.severity !== 'low')
       .map((f) => ({ kind: f.kind, severity: f.severity, detail: f.detail }));
   const log = (type: string, aggregateId: string, payload: Record<string, unknown> = {}) =>
@@ -439,7 +440,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
 
     case 'watch': {
       if (values.task && !hub.orchestrator.getTask(values.task)) throw new CliError(`task '${values.task}' not found`);
-      const report = hub.watch({ focusTaskId: values.task, anchor: boot.audit });
+      const report = hub.watch({ focusTaskId: values.task, anchor: boot?.audit });
       return reply({
         report,
         note: 'Mechanical checks over the records, with heuristic thresholds. A clean report means these checks found nothing, not that the work is right.',
@@ -639,7 +640,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
     case 'audit': {
       if (sub === 'verify') {
         const chain = hub.audit.verify();
-        const anchor = boot.audit;
+        const anchor = boot?.audit;
         const anchored = anchor ? hub.audit.contains(anchor) : null;
         const ok = chain.ok && anchored !== false;
         return {
@@ -854,3 +855,4 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       throw new CliError(`unknown command '${command}'\n${USAGE}`);
   }
 }
+

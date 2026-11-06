@@ -1,5 +1,7 @@
 # Ruflo → Colony migrációs térkép
 
+> Frissítés: a `colony boot` opcionális diagnosztika. A CLI a munkamenetet az első normál parancsnál tölti be; a bootállapot és a szabályeltérések nem blokkolják a munkát.
+
 Állapot: 2026-10-31. Forrás: a repó tényleges tartalma és a [plant.md](../plant.md).
 
 ## Kész (`packages/colony-core`)
@@ -20,10 +22,10 @@ Ellenőrizve: tiszta telepítés után `pnpm build` hibátlan, és a `pnpm test`
 ## Host-vezérelt irány (2026-10-31)
 
 Nincs API-kulcs: a host (Cowork) maga a modell, a mag csak főkönyv. Ehhez készült:
-- `cli/session.ts`: állapot betöltése és mentése (`.colony/ledger.json`, `.colony/memory.json`), boot (`LOADED` / `UNVERIFIABLE` / `BLOCKED`), revízió-feloldás.
+- `cli/session.ts`: állapot betöltése és mentése (`.colony/ledger.json`, `.colony/memory.json`), opcionális boot-diagnosztika (`LOADED` / `UNVERIFIABLE` / `BLOCKED`), revízió-feloldás.
 - `cli/commands.ts` és `cli.ts`: a `colony` parancs (boot, status, task, next, done, fail, propose, vote, memory).
 - `snapshot()` / `restore()` a nyilvántartásban, az orchestratorban és a konszenzusmotorban.
-- Szabálybetöltés a bootban: `.colony/rules/manifest.json` + kötelező szabályfájlok, hash-elve, driftvédelemmel (`cli/default-rules.ts` a kezdőkészlet).
+- Opcionális szabálybetöltés a bootban: `.colony/rules/manifest.json` + helyi útmutatók, hash-elve; az eltérés csak figyelmeztetés (`cli/default-rules.ts` a kezdőkészlet).
 - 15 CLI-teszt a teljes munkafolyamatra és a szabályokra (összesen 30 teszt, mind zöld).
 
 Következmény: a modellszolgáltatós részek kivezetve (lásd a 2. szakaszt).

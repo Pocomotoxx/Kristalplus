@@ -210,6 +210,8 @@ export class ColonySession {
       hub.audit.restore(entries); // throws when the hash chain is broken
       session.auditPersisted = entries.length;
     }
+    // Initialize a new colony on first use; `boot` is an optional diagnostic command.
+    session.seedBuiltinMembers();
     return session;
   }
 
@@ -239,8 +241,8 @@ export class ColonySession {
   }
 
   /**
-   * Register the built-in profiles that are not members yet, by id. Idempotent. Boot only seeds an
-   * empty colony; an existing colony gets the newer roles through `member preset standard`.
+   * Register the built-in profiles that are not members yet, by id. Idempotent. An existing
+   * colony gets the newer roles through `member preset standard`.
    */
   public addMissingBuiltinMembers(): string[] {
     const added: string[] = [];
@@ -260,7 +262,7 @@ export class ColonySession {
   }
 
   /**
-   * Boot: load and validate the state files, seed members, resolve the revision, record evidence.
+   * Optional diagnostic: load and validate state, seed rules, resolve the revision, record evidence.
    * LOADED = state valid and revision resolved; UNVERIFIABLE = state valid, revision unknown
    * (content work allowed, repository mutation not); BLOCKED = a state file is unreadable or malformed.
    */
@@ -316,10 +318,7 @@ export class ColonySession {
       audit: session && problems.length === 0 ? session.hub.audit.anchor() : previous?.audit,
     };
 
-    if (session) {
-      session.seedBuiltinMembers();
-      await session.save();
-    }
+    if (session) await session.save();
     // Always overwrite the boot record, so a BLOCKED boot revokes an earlier successful one.
     await fs.mkdir(stateDir, { recursive: true });
     await fs.writeFile(path.join(stateDir, BOOT_FILE), JSON.stringify(record, null, 2), 'utf-8');
@@ -332,3 +331,4 @@ export class ColonySession {
     return text === null ? null : (JSON.parse(text) as BootRecord);
   }
 }
+

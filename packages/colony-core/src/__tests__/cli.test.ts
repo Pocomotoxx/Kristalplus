@@ -23,11 +23,13 @@ async function project(name: string): Promise<(...args: string[]) => Promise<{ c
   };
 }
 
-test('commands refuse to run before boot', async () => {
+test('commands run without boot and initialize built-in members on first use', async () => {
   const run = await project('noboot');
   const r = await run('status');
-  assert.equal(r.code, 2);
-  assert.match(r.out.error, /not booted/);
+  assert.equal(r.code, 0);
+  assert.equal(r.out.colony.totalMembers, 11);
+  const added = await run('task', 'add', 'No boot needed', 'work starts directly', '--role', 'engineer');
+  assert.equal(added.code, 0);
 });
 
 test('boot seeds the built-in members once and reports UNVERIFIABLE outside git', async () => {
@@ -56,8 +58,7 @@ test('a corrupt ledger blocks boot and revokes an earlier successful boot', asyn
   assert.ok(blocked.out.boot.problems.length > 0);
 
   const after = await run('status');
-  assert.equal(after.code, 2);
-  assert.match(after.out.error, /BLOCKED/);
+  assert.equal(after.code, 1); // malformed state remains an error; the boot record is not a gate
 });
 
 test('a memory file that is not an array blocks boot', async () => {
@@ -253,8 +254,8 @@ test('editing a rule after boot revokes work until the next boot', async () => {
 
   await fs.appendFile(rulesPath('rules-drift', '10-evidence.md'), '- extra sor\n', 'utf-8');
   const drift = await run('status');
-  assert.equal(drift.code, 2);
-  assert.match(drift.out.error, /rule files changed/);
+  assert.equal(drift.code, 0);
+  assert.ok(drift.out.warnings.some((warning: string) => /rule files changed/.test(warning)));
 
   assert.equal((await run('boot')).code, 0);
   assert.equal((await run('status')).code, 0);
@@ -270,7 +271,7 @@ test('a missing, empty or out-of-directory mandatory rule blocks boot', async ()
   assert.equal(missing.out.boot.status, 'BLOCKED');
   assert.match(missing.out.boot.problems.join(' '), /20-consensus\.md/);
   assert.equal(missing.out.rules, undefined);
-  assert.equal((await run('status')).code, 2);
+  assert.equal((await run('status')).code, 0);
 
   await fs.writeFile(rulesPath('rules-missing', '20-consensus.md'), '   \n', 'utf-8');
   assert.match((await run('boot')).out.boot.problems.join(' '), /empty rule file/);
@@ -292,3 +293,4 @@ test('next and vote reject an unknown role or member', async () => {
   assert.match((await run('next', '--as', 'wizard')).out.error, /no member or role/);
   assert.equal((await run('next')).code, 1);
 });
+

@@ -1,18 +1,18 @@
-/** Starter rule set, written to `.colony/rules/` on the first boot. After that the files belong to the project. */
+/** Starter rule set, written to `.colony/rules/` on the first optional boot. After that the files belong to the project. */
 export const DEFAULT_RULES: Record<string, string> = {
   '00-protocol.md': `# Munkaprotokoll
 
 - A host a modell. A kolónia csak főkönyv, útvonalválasztás, szavazás és memória.
 - Munkát csak a \`next\` parancson át veszel fel, és csak a neked kiosztott feladaton dolgozol.
 - A munka végén \`done\` (eredménnyel) vagy \`fail\` (hibaszöveggel) kötelező. Félbehagyott feladatot ne hagyj \`in_progress\` állapotban.
-- Boot nélkül nincs munka. Ha a boot után a szabályfájlok vagy a git-revízió változtak, bootolj újra.
-- Az \`UNVERIFIABLE\` boot azt jelenti, hogy a git-revízió ismeretlen: tartalmi munka mehet, a repó módosítása nem.
+- A boot opcionális diagnosztika. A parancsok önállóan betöltik és inicializálják a kolónia állapotát.
+- A bootban jelzett szabály- vagy revízióeltérés figyelmeztetés; nem tiltja le a munkaparancsokat.
 `,
   '10-evidence.md': `# Bizonyíték és őszinte jelentés
 
 - Eredményt, szavazati indoklást és memóriabejegyzést soha ne találj ki. Csak azt írd le, amit ténylegesen megtettél vagy ellenőriztél.
 - A \`done\` eredménye mondja meg, mi készült el és hogyan ellenőrizted. Ha valamit nem ellenőriztél, írd bele.
-- A boot azt bizonyítja, hogy az állapot és a szabályfájlok be lettek olvasva. Azt nem, hogy alkalmaztad őket. Ne állítsd, hogy betartottad, ha nem tudod megmutatni.
+- Ha futtatsz bootot, az azt bizonyítja, hogy az állapotot és a szabályfájlokat beolvasta. Azt nem, hogy alkalmaztad őket.
 - Sikertelen vagy részleges munkát \`fail\` paranccsal jelents, ne \`done\`-nal.
 `,
   '20-consensus.md': `# Konszenzus
@@ -28,3 +28,4 @@ export const DEFAULT_MANIFEST = {
   version: 1,
   mandatory: Object.keys(DEFAULT_RULES),
 };
+

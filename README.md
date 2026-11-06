@@ -1,6 +1,6 @@
 # Kristalplus – Kristal Colony
 
-Modellfüggetlen **kolónia-mag** TypeScriptben. Nem hív LLM-et és nem kér API-kulcsot: a **host** (például a Cowork) maga a modell, a Colony pedig a főkönyve. Egy paranccsal (`colony boot`) betölti a rendszert, utána a host parancsokon keresztül dolgozik: feladatot vesz fel, kér, teljesít, szavaz, és a kolónia vektoros memóriájába ír. Az állapot a repóban él (`.colony/`).
+Modellfüggetlen **kolónia-mag** TypeScriptben. Nem hív LLM-et és nem kér API-kulcsot: a **host** (például a Cowork) maga a modell, a Colony pedig a főkönyve. A host közvetlenül használhatja a `colony` parancsait; az első parancs betölti vagy inicializálja az állapotot. A `colony boot` opcionális diagnosztika. A host parancsokon keresztül dolgozik: feladatot vesz fel, kér, teljesít, szavaz, és a kolónia vektoros memóriájába ír. Az állapot a repóban él (`.colony/`).
 
 > **Állapot: átmenet alatt.** A projekt a Ruflo / Claude Flow v3 rajalapú architektúrájából indult, de már csak inspirációs alap: a Colonynak a Ruflo csupán egy része, váza. Az új mag a [`packages/colony-core`](packages/colony-core). A régi Ruflo-kód a [`legacy/ruflo`](legacy/README.md) mappába került: befagyasztva, build és CI nélkül, és fokozatosan lesz átvéve vagy kivezetve. Részletek: [docs/COLONY-MIGRATION.md](docs/COLONY-MIGRATION.md) és [plant.md](plant.md).
 
@@ -27,8 +27,8 @@ A korábbi „raj” (swarm) helyett mindenhol **kolónia** (colony) a terminol�
 - **Kiosztás pontozással (Colony Chief, P1):** a feladatot nem a legkevésbé terhelt tag kapja, hanem a legjobb pontszámú: képesség 0,30, terhelés 0,20, teljesítmény 0,25, egészség 0,15, elérhetőség 0,10. A súlyok a régi rendszerből jönnek, **heurisztikusak**, nem mért értékek. A teljesítmény a főkönyvből számolt, simított sikerarány (jelentett „kész", nem ellenőrzött minőség). Holtversenynél a tag azonosítója dönt.
 - **Tanulás:** MoE-router és Reasoning Bank, amely a korábbi tapasztalatokat visszatáplálja. A router a szabályalapú pontszámra szavankénti, kimenetből tanult súlyokat ad (determinisztikus összeg, nincs beágyazásmodell és véletlen). Amit tanul, azt a host jelentette, nem ellenőrzött minőség. Minden lezárt feladatról (a hibásról is) strukturált jegyzet kerül az `outcomes` memórianévtérbe, a szabad szöveges eredmény és hibaüzenet nélkül; a hostile szöveg sem a Reasoning Bankba, sem ide nem kerül be, a visszautasítás az auditnaplóban van (`memory.refused`).
 - **Host-vezérelt működés:** a `colony` parancssori eszköz JSON-t ír ki, így bármelyik host használhatja. A magnak nincs szüksége modellszolgáltatóra.
-- **Boot:** a `colony boot` betölti és ellenőrzi az állapotfájlokat és a szabályfájlokat, feloldja a git-revíziót, és állapotot jelent (`LOADED`, `UNVERIFIABLE`, `BLOCKED`). Boot nélkül a munkaparancsok nem futnak.
-- **Auditnapló:** minden változtatás hash-láncolt bejegyzés (SHA-256, aggregátumonként verzió). Szabad szöveg (eredmény, hibaszöveg, ellenőrzött parancs) nem kerül bele, csak a hossza vagy a döntés. Korlát: nincs aláírás, aki az egész fájlt átírja és újraszámolja a hash-eket, érvényes láncot kap. A boot rögzíti a napló végét, a következő boot ezzel fogja meg a levágást vagy az átírást; ez csak a két boot közti időre igaz.
+- **Opcionális boot-diagnosztika:** a `colony boot` ellenőrzi az állapotfájlokat és a szabályokat, feloldja a git-revíziót, és állapotot jelent (`LOADED`, `UNVERIFIABLE`, `BLOCKED`). A munkaparancsok boot nélkül is futnak; a diagnosztikai eltérések figyelmeztetések, a hibás állapotfájlok viszont továbbra is adatolvasási hibát okoznak.
+- **Auditnapló:** minden változtatás hash-láncolt bejegyzés (SHA-256, aggregátumonként verzió). Szabad szöveg (eredmény, hibaszöveg, ellenőrzött parancs) nem kerül bele, csak a hossza vagy a döntés. Korlát: nincs aláírás, aki az egész fájlt átírja és újraszámolja a hash-eket, érvényes láncot kap. A boot opcionális horgonyt rögzít a napló végére; a következő boot és az `audit verify` ezzel észlelheti a levágást vagy átírást.
 - **Biztonság:** a fájlutak feloldott (symlink/junction követő) tartalmazás-ellenőrzéssel mennek át (`safe-path.ts`: szabályfájlok, `check --file`), a git-hívások nem hagyják, hogy a vizsgált repó saját parancsot futtasson (`core.fsmonitor`, `safe-git.ts`).
 - **Nincs LLM-függés:** a magban nincs modellszolgáltató, hálózati hívás, API-kulcs vagy környezeti változó. A memória beágyazása helyi és determinisztikus.
 
@@ -45,12 +45,12 @@ pnpm test
 
 Hostnak adható indítóutasítás: [START_HERE.md](START_HERE.md).
 
-### Munkamenet: boot, majd munka
+### Munkamenet: közvetlen munkakezdés
 
 Minden parancs JSON-t ír ki. A `--dir <mappa>` a projektmappa (alapértelmezés: az aktuális mappa).
 
 ```bash
-node dist/cli.js boot                                   # betöltés, állapot, munkaprotokoll
+# Opcionális diagnosztika: node dist/cli.js boot
 node dist/cli.js task add "Cím" "Leírás" --role engineer
 node dist/cli.js next --as engineer                     # következő feladat + utasítás + memóriakontextus
 node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres eredmény kötelező
@@ -58,7 +58,7 @@ node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres ere
 
 | Parancs | Mit csinál |
 |---|---|
-| `boot` | Betölti és ellenőrzi az állapotot, beregisztrálja a beépített tagokat, kiírja a protokollt. |
+| `boot` | Opcionális: ellenőrzi és kiírja az állapot és a szabályok diagnosztikáját. Munkakezdéshez nem szükséges. |
 | `status` | Tagok, feladatok, nyitott javaslatok. |
 | `task add <cím> <leírás>` | Új feladat (`--role`, `--after id,id`, `--priority`, `--consensus <kvórum>`). Szerep nélkül a MoE-router választ. |
 | `next --as <szerep\|tag>` | A szerepnek kiosztott következő feladat, a szerep utasításával és a releváns memóriával. |
@@ -72,7 +72,7 @@ node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres ere
 | `plan <feladat> [--kind K] [--apply]` | Feladatelemzés: fajta (szerepből vagy szavakból), komplexitás, becsült idő (heurisztikus; legalább 3 mért befejezés után mért), témák, hasonló korábbi munka, bizonyosság, és a felbontás lépései szerepekkel, hullámokkal és stratégiával (`single`, `sequential`, `pipeline`, `parallel`, `fan-out-fan-in`, `hybrid`, a függőségi gráfból levezetve). Alapból csak javasol. Az `--apply` a lépéseket valódi feladatként hozza létre; a szülő az utolsó lépésre vár, és utolsóként zárul (jóváhagyás). Rövid (200 karakter alatti) feladat, ellenőrzés és részfeladat nem bomlik. |
 | `health [--queue-depth N] [--long-wait-min N]` | A kolónia egészsége (csak olvas): öt csoport (vezetés, kutatás, elemzés, végrehajtás, minőség) hibaaránnyal és válaszidővel, szűk keresztmetszetek (hosszú sor, hibás tagok, elavult vagy blokkolt foglalás, feladat, amit senki nem vehet át, bukott függőségre váró feladat), riasztások, javaslatok, átbocsátás, szavazási sikerarány. A küszöbök és a képletek heurisztikusak. |
 | `score <feladat>` | A tagok rangsora a feladatra összetevőkre bontva, az elsődleges és legfeljebb két tartalék tag, és hogy a többi miért nem jöhet szóba. |
-| `member list\|preset standard` | Tagok listája; a hiányzó beépített szerepek pótlása egy régebbi főkönyvben (idempotens). A boot csak üres kolóniát tölt fel. |
+| `member list\|preset standard` | Tagok listája; első használatkor az új kolónia megkapja a beépített szerepeket, meglévő főkönyvnél a parancs pótolja a hiányzó szerepeket. |
 | `claim list\|sweep` | Ki mit foglal (`list`, csak olvas). A `sweep` stealable-re állítja az elavult (30 perc tevékenység nélkül) és a túl régen blokkolt (60 perc) foglalásokat. |
 | `claim heartbeat\|block\|unblock\|release <feladat> --as <tag>` | Életjel (`--progress 0..100`; a stealable foglalást visszaveszi), blokkolás (`--reason`), feloldás, lemondás (azonnal átvehető). |
 | `claim steal <feladat> --as <tag>` | Stealable foglalás átvétele a türelmi idő (10 perc) után, a tag kapacitásán belül. A feladat új gazdát kap. |
@@ -85,20 +85,25 @@ node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres ere
 | `vote <javaslat> --as <tag> --approve\|--reject --reason <szöveg>` | Szavaz (`--confidence 0..1`). Indoklás kötelező. |
 | `memory add\|search` | Kézi memóriaírás és -keresés (`--ns`, `--k`). |
 
-A boot állapotai (a Krista bootlogikáját követve):
-- `LOADED`: az állapotfájlok érvényesek, a git-revízió ismert.
-- `UNVERIFIABLE`: az állapot érvényes, de a revízió ismeretlen. Tartalmi munka mehet, repómódosítás nem.
-- `BLOCKED`: egy állapotfájl hibás, vagy egy kötelező szabályfájl hiányzik, üres vagy a szabálykönyvtáron kívülre mutat. A boot ezt rögzíti, és a munkaparancsok megtagadják a futást, amíg a hiba ki nincs javítva. Hibás állapotfájlt a rendszer soha nem ír felül csendben.
+### Opcionális boot-diagnosztika
 
-Ha a git-revízió megváltozott a boot óta, a parancsok figyelmeztetnek, hogy újra kell bootolni.
+A `colony boot` állapotellenőrzést futtat és jelentést készít:
+
+- `LOADED`: az állapotfájlok érvényesek, a git-revízió ismert.
+- `UNVERIFIABLE`: az állapot érvényes, de a revízió ismeretlen.
+- `BLOCKED`: az ellenőrzés hibás állapotot vagy szabályfájlt talált.
+
+A boot eredménye nem kapu: a munkaparancsokat egyik bootállapot sem tiltja le. A sérült vagy olvashatatlan főkönyv, memória vagy auditnapló továbbra is hibát okoz, mert az adatot nem lehet biztonságosan betölteni. A git-revízió és szabályfájlok eltérése csak diagnosztikai figyelmeztetés.
+
 
 ### Szabályok
 
-A kötelező szabályokat a `.colony/rules/manifest.json` sorolja fel (`mandatory`), a fájlok ugyanabban a mappában vannak. Az első boot egy kis kezdőkészletet ír ki (munkaprotokoll, őszinte jelentés, konszenzus). Ezt utána a projekt szabadon átírhatja és bővítheti, a rendszer a meglévő fájlokat soha nem írja felül.
+A `.colony/rules/manifest.json` fájl felsorolja a helyi szabály- és útmutatófájlokat. Az opcionális első boot egy kezdőkészletet ír ki; a projekt ezeket szabadon módosíthatja. A Colony a boot diagnosztikájában beolvassa és hash-eli a felsorolt fájlokat, de a normál munkaparancsok futásához nem követeli meg sem a bootot, sem a fájlok változatlanságát.
 
-- A boot kimenete tartalmazza minden szabály szövegét és SHA-256 hash-ét. A host ezeket olvassa be.
-- Ha boot után bármelyik szabályfájl megváltozik, eltűnik vagy olvashatatlan lesz, a munkaparancsok kódja 2, és újra kell bootolni.
-- A boot a beolvasást és a hash-t bizonyítja, nem azt, hogy a host alkalmazta is a szabályokat.
+- A boot kimenete tartalmazza a szabályfájlok szövegét és SHA-256 hash-ét.
+- A boot utáni fájlváltozás figyelmeztetésként jelenik meg, nem állítja le a munkát.
+- A host felel azért, hogy megismerje és alkalmazza a projekt útmutatásait.
+
 
 ## Repó felépítése
 
