@@ -605,7 +605,11 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         const added: string[] = [];
         for (const slot of LEGACY_15_SLOTS) {
           const id = `legacy15_${slot.key}`;
-          if (hub.registry.getMember(id)) continue;
+          const existing = hub.registry.getMember(id);
+          if (existing) {
+            if (existing.metadata?.colonyTemplate !== 'legacy-15') throw new CliError(`template member id collision: ${id}`);
+            continue;
+          }
           const profile = Object.values(BUILTIN_AGENT_PROFILES).find((candidate) => candidate.role === slot.role);
           const member = hub.registry.register({
             id, name: `Colony template: ${slot.label}`, role: slot.role,
