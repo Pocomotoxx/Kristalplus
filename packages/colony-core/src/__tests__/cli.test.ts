@@ -215,6 +215,29 @@ test('weighted proposal records Colony performance and health weights in votes a
   assert.equal(vote.out.proposal.status, 'open');
 });
 
+test('member sweep expires temporary members and makes their work recoverable', async () => {
+  const run = await project('ephemeral-member');
+  const created = await run('member', 'add', 'Short-lived helper', '--role', 'custom', '--ephemeral', '--ttl-min', '0.0002'); assert.equal(created.code, 0);
+  const memberId = created.out.member.id;
+  const added = await run('task', 'add', 'Temporary work', 'can be reassigned', '--role', 'custom'); assert.equal(added.out.task.assignedAgentId, memberId);
+  const next = await run('next', '--as', memberId); assert.equal(next.out.task.id, added.out.task.id);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  const swept = await run('member', 'sweep'); assert.equal(swept.code, 0); assert.equal(swept.out.expired[0].memberId, memberId);
+  assert.deepEqual(swept.out.expired[0].markedStealable, [added.out.task.id]);
+  assert.equal((await run('claim', 'list')).out.claims[0].status, 'stealable');
+  assert.equal((await run('member', 'list')).out.members.find((m: any) => m.id === memberId).status, 'offline');
+  assert.deepEqual((await run('member', 'sweep')).out.expired, []);
+});
+
+test('member sweep requeues an unstarted temporary assignment', async () => {
+  const run = await project('ephemeral-unstarted');
+  const created = await run('member', 'add', 'Short-lived helper', '--role', 'custom', '--ephemeral', '--ttl-min', '0.0002'); const memberId = created.out.member.id;
+  const added = await run('task', 'add', 'Queued after expiry', 'not started yet', '--role', 'custom'); assert.equal(added.out.task.assignedAgentId, memberId);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  const swept = await run('member', 'sweep'); assert.deepEqual(swept.out.expired[0].requeued, [added.out.task.id]);
+  assert.equal((await run('status')).out.tasks.find((t: any) => t.id === added.out.task.id).status, 'pending');
+});
+
 test('topology prints the graph, finds paths and validates its options', async () => {
   const run = await project('topology');
   await run('boot');

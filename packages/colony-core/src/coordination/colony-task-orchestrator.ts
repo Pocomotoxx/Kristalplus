@@ -280,6 +280,16 @@ export class ColonyTaskOrchestrator {
     await this.messageBus.publish('task:reassigned', 'orchestrator', { taskId, from: previous, to: newAgentId });
   }
 
+  /** Return an unstarted assignment to the queue after its temporary holder expires. */
+  public async releaseUnstartedTask(taskId: string, formerAgentId: string): Promise<void> {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Task '${taskId}' not found`);
+    if (task.status !== 'assigned' || task.assignedAgentId !== formerAgentId) throw new Error(`Task '${taskId}' is not an unstarted assignment held by '${formerAgentId}'`);
+    this.registry.completeTask(formerAgentId, taskId);
+    task.status = 'pending'; task.assignedAgentId = undefined; task.startedAt = undefined;
+    await this.messageBus.publish('task:released', formerAgentId, { taskId, reason: 'member_expired' });
+  }
+
   public async updateTaskProgress(
     taskId: string,
     agentId: string,

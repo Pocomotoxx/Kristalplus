@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './message-bus.js';
 export * from './coordination/colony-registry.js';
 export * from './coordination/claim-ledger.js';
+export * from './coordination/ephemeral-members.js';
 export * from './coordination/colony-task-orchestrator.js';
 export * from './consensus/consensus-engine.js';
 export * from './consensus/strategies.js';

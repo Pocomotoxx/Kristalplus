@@ -19,7 +19,7 @@ A korábbi „raj” (swarm) helyett mindenhol **kolónia** (colony) a terminol�
 ## Mit tud a `colony-core`
 
 - **Koordináció:** ágensnyilvántartás (kapacitás, `idle`/`busy`/`offline`), feladatbontás függőségekkel, automatikus delegálás, eseménybusz témákkal és wildcarddal.
-- **Konszenzus:** kvórum- és megbízhatósággal súlyozott szavazás. A kvórum rögzíthető, vagy stratégiából jön a szavazók számából: `majority`, `supermajority`, `byzantine` (3f+1), `unanimous`, `weighted` (the proposal freezes each eligible member's performance × health weight). Ha a kvórum már nem érhető el, a javaslat azonnal elutasítva lesz.
+- **Konszenzus:** kvórum- és megbízhatósággal súlyozott szavazás. A kvórum rögzíthető, vagy stratégiából jön a szavazók számából: `majority`, `supermajority`, `byzantine` (3f+1), `unanimous`, `weighted` (a javaslat rögzíti a tagok teljesítmény × egészség súlyát). Ha a kvórum már nem érhető el, a javaslat azonnal elutasítva lesz.
 - **Foglalások (claims):** a `next` foglalást nyit a feladatra, a `done` / `fail` lezárja. Ha a gazdagép-munkamenet elhal, a foglalás elavul, és másik tag átveheti, vagy a gazda átadhatja. Az idő mindig paraméter, nincs időzítő és véletlen, ezért az egész visszajátszható.
 - **Topológia:** a tagok kapcsolati gráfja (`mesh`, `star`, `tree`, `hybrid`), determinisztikusan: ugyanazokból a tagokból mindig ugyanaz a gráf. Vezetőválasztás, szomszédok, legrövidebb út.
 - **Memória (Vector Codex):** szolgáltatófüggetlen embedding-felület, koszinusz-hasonlóságú vektortár névterekkel, fájlalapú perzisztencia a `.colony/memory.json` fájlban. A keresés alapból pontos (lineáris), 500 vektor fölött determinisztikus HNSW-gráf gyorsítja (`index: 'linear' | 'hnsw' | 'auto'`). A gráf nincs mentve, a tárolt dokumentumokból épül újra, mindig ugyanúgy.
@@ -76,6 +76,8 @@ node dist/cli.js synthesize <parentTaskId>                   # lezárt részfela
 | `health [--queue-depth N] [--long-wait-min N]` | A kolónia egészsége (csak olvas): öt csoport (vezetés, kutatás, elemzés, végrehajtás, minőség) hibaaránnyal és válaszidővel, szűk keresztmetszetek (hosszú sor, hibás tagok, elavult vagy blokkolt foglalás, feladat, amit senki nem vehet át, bukott függőségre váró feladat), riasztások, javaslatok, átbocsátás, szavazási sikerarány. A küszöbök és a képletek heurisztikusak. |
 | `score <feladat>` | A tagok rangsora a feladatra összetevőkre bontva, az elsődleges és legfeljebb két tartalék tag, és hogy a többi miért nem jöhet szóba. |
 | `member list\|preset standard` | Tagok listája; első használatkor az új kolónia megkapja a beépített szerepeket, meglévő főkönyvnél a parancs pótolja a hiányzó szerepeket. |
+| `member add <név> --role R --ephemeral --ttl-min N` | Ideiglenes tag felvétele explicit lejárattal; az azonosító a névből, szerepből és időbélyegből determinisztikus. |
+| `member sweep` | Lejártak offline jelölése; az elkezdett munka foglalása átvehető, az el nem kezdett feladat újraosztható. Nincs háttér-időzítő. |
 | `claim list\|sweep` | Ki mit foglal (`list`, csak olvas). A `sweep` stealable-re állítja az elavult (30 perc tevékenység nélkül) és a túl régen blokkolt (60 perc) foglalásokat. |
 | `claim heartbeat\|block\|unblock\|release <feladat> --as <tag>` | Életjel (`--progress 0..100`; a stealable foglalást visszaveszi), blokkolás (`--reason`), feloldás, lemondás (azonnal átvehető). |
 | `claim steal <feladat> --as <tag>` | Stealable foglalás átvétele a türelmi idő (10 perc) után, a tag kapacitásán belül. A feladat új gazdát kap. |
@@ -126,7 +128,7 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 - A `colony-core` tesztjei (`pnpm test`, 248 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
 - A szabályok csak kötelező készletből állnak, és mind a bootban töltődnek be. Feladathoz kötött szabálybetöltésre (útválasztóra) szándékosan nincs szükség.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
-- A beépített tagok (11 szerep) fixek; a `member preset standard` csak pótolja a hiányzókat. Egyedi tag felvétele és az ideiglenes tagok még nincsenek (P9 a [tervben](docs/QUEEN-PORT-PLAN.md)).
+- A `member preset standard` pótolja a hiányzó beépített szerepeket. Az ideiglenes, explicit lejáratú tagok P9 része a `member add` és `member sweep` paranccsal; az opcionális `legacy-15` sablon még hátravan.
 - A `plant.md` V. és VI. fázisa nincs leírva, és nincs bennük kész kód.
 - A `legacy/ruflo` mappából még nem döntöttük el, melyik plugin és csomag kerül át a Colonyba, és melyik törlendő.
 - A régi Ruflo `LICENSE` fájlja nincs a másolatban (lásd [legacy/README.md](legacy/README.md)).

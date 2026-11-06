@@ -15,6 +15,7 @@ import { aggregateDecision, checkDestructive, checkDiffSize, checkSecrets, check
 import { buildTopology, isFullyConnected, shortestPath, TOPOLOGY_TYPES, TopologyType } from '../topology.js';
 import { synthesizeReports } from '../chief/synthesis.js';
 import { computeMemberStats } from '../chief/member-stats.js';
+import { EPHEMERAL_MEMBER_KEY, ephemeralRecord, isEphemeralExpired, markEphemeralSwept } from '../coordination/ephemeral-members.js';
 
 export interface CommandResult {
   code: number;
@@ -43,6 +44,8 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   health [--queue-depth N] [--long-wait-min N]   groups, bottlenecks, alerts, recommendations (read-only, heuristic thresholds)
   score <taskId>                       rank the members for a task (heuristic weights), with backups and why the others cannot
   member list | member preset standard    list members; add the built-in roles a colony is missing
+  member add <name> --role R --ephemeral --ttl-min N   add a temporary member; member sweep expires it
+  member sweep                            expire temporary members; transfer claims and requeue unstarted tasks
   next --as <role|memberId>              take the next task for that role (with memory context)
   done <taskId> --result <text>           complete a task; a real, non-empty result is required
                                           [--quality 0..1] [--verified-by-test]   what you report; the colony learns from it but cannot check it
@@ -123,6 +126,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         dir: { type: 'string' },
         as: { type: 'string' },
         role: { type: 'string' },
+        name: { type: 'string' },
         after: { type: 'string' },
         priority: { type: 'string' },
         consensus: { type: 'string' },
@@ -166,6 +170,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         ns: { type: 'string' },
         k: { type: 'string' },
         help: { type: 'boolean' },
+        ephemeral: { type: 'boolean' },
+        'ttl-min': { type: 'string' },
       },
     });
   } catch (err: any) {
@@ -565,7 +571,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
 
     case 'member': {
       if (sub === 'list') {
-        return reply({ members: hub.registry.getAllMembers().map((m) => ({ id: m.id, role: m.role, status: m.status, tasks: m.currentTaskIds, maxConcurrentTasks: m.capabilities.maxConcurrentTasks })) });
+        return reply({ members: hub.registry.getAllMembers().map((m) => ({ id: m.id, name: m.name, role: m.role, status: m.status, tasks: m.currentTaskIds, maxConcurrentTasks: m.capabilities.maxConcurrentTasks, ...(ephemeralRecord(m) ? { ephemeral: true, expiresAt: ephemeralRecord(m)!.expiresAt } : {}) })) });
       }
       if (sub === 'preset') {
         if (positionals[2] !== 'standard') throw new CliError('usage: member preset standard');
@@ -574,7 +580,46 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         await session.save();
         return reply({ added, total: hub.registry.getAllMembers().length });
       }
-      throw new CliError('usage: member list | member preset standard');
+      if (sub === 'add') {
+        const name = positionals[2] ?? values.name;
+        if (!name?.trim()) throw new CliError('member add needs a non-empty name');
+        if (!values.ephemeral) throw new CliError('member add currently requires --ephemeral');
+        if (!values.role || !ROLES.includes(values.role as AgentRole)) throw new CliError(`--role must be one of ${ROLES.join(', ')}`);
+        const ttlMin = values['ttl-min'] === undefined ? Number.NaN : Number(values['ttl-min']);
+        const due = Date.now() + ttlMin * 60_000;
+        if (!Number.isFinite(ttlMin) || ttlMin <= 0 || !Number.isFinite(due) || due > 8.64e15) throw new CliError('--ttl-min must be a positive finite number within the supported date range');
+        const now = Date.now(), expiresAt = now + ttlMin * 60_000;
+        const slug = name.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'member';
+        const baseId = `ephemeral_${values.role}_${slug}_${now.toString(36)}`;
+        let id = baseId, suffix = 1;
+        while (hub.registry.getMember(id)) id = `${baseId}_${suffix++}`;
+        const member = hub.registry.register({ id, name: name.trim(), role: values.role as AgentRole, metadata: { [EPHEMERAL_MEMBER_KEY]: { expiresAt, createdBy: values.as ?? 'host' } } });
+        log('member.added', member.id, { role: member.role, ephemeral: true, expiresAt }); await session.save();
+        return reply({ member, ephemeral: { expiresAt, ttlMin } });
+      }
+      if (sub === 'sweep') {
+        const now = Date.now();
+        const expired: Array<{ memberId: string; expiresAt: number; markedStealable: string[]; requeued: string[] }> = [];
+        for (const member of hub.registry.getAllMembers()) {
+          const ephemeral = ephemeralRecord(member);
+          if (!ephemeral || now < ephemeral.expiresAt || ephemeral.sweptAt !== undefined) continue;
+          hub.registry.updateStatus(member.id, 'offline');
+          const marked = hub.claims.expireHolder(member.id, now);
+          for (const claim of marked) log('claim.stealable', claim.taskId, { holderId: member.id, reason: claim.stealableReason });
+          const requeued: string[] = [];
+          for (const task of hub.orchestrator.getAllTasks()) {
+            if (task.status !== 'assigned' || task.assignedAgentId !== member.id) continue;
+            const claim = hub.claims.get(task.id); if (claim && claim.status !== 'closed') hub.claims.close(task.id, 'released', member.id, now);
+            await hub.orchestrator.releaseUnstartedTask(task.id, member.id); await hub.orchestrator.tryDispatchTask(task.id); requeued.push(task.id);
+          }
+          markEphemeralSwept(member, now);
+          log('member.expired', member.id, { expiresAt: ephemeral.expiresAt, markedStealable: marked.map(c => c.taskId), requeued });
+          expired.push({ memberId: member.id, expiresAt: ephemeral.expiresAt, markedStealable: marked.map(c => c.taskId), requeued });
+        }
+        await session.save();
+        return reply({ expired, note: 'Expired members stay in the ledger as offline history. Their started work remains available through stealable claims; unstarted assignments return to the queue.' });
+      }
+      throw new CliError('usage: member list | preset standard | add <name> --role R --ephemeral --ttl-min N | sweep');
     }
 
     case 'scan': {
@@ -743,6 +788,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
           case 'steal': {
             needTask();
             const [member] = resolveMembers(session, values.as);
+            if (member.status === 'offline' || member.status === 'error' || isEphemeralExpired(member)) throw new ClaimError('INELIGIBLE_MEMBER', `member '${member.id}' is not available to take a claim`);
             const { claim, previousHolderId, previousProgress } = hub.claims.steal(taskId, member.id, now, {
               challengerOpenClaims: capacityOf(member).open,
               maxClaims: capacityOf(member).max,

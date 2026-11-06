@@ -49,7 +49,7 @@ A beépített tagok így 6-ról 11-re nőnek (`director`, `architect`, `engineer
 
 ## Fázisok
 
-> **Állapot:** a P0–P6 és P8 megvalósítva; a P7 súlyozott szavazási része kész, a Chief override, P9 és P11 még hátra van. A P8 Colony-native, modellhívás nélküli szintézis; részletei alább.
+> **Állapot:** a P0–P6 és P8 megvalósítva; a P7 súlyozott szavazási része kész, a Chief override, a P9 `legacy-15` sablonja és P11 még hátra van. A P8 Colony-native, modellhívás nélküli szintézis; részletei alább.
 
 ### P0 – Előkészítés (kicsi, kód nélkül)
 
@@ -145,8 +145,8 @@ A tiszta szintézismodul 3 egységtesztje lefutott; a teljes csomag buildje és 
 
 ### P9 – Ideiglenes tagok és sablonok (a federation-hub használható része)
 
-- `colony member add --ephemeral --ttl-min N`: az al-munkamenet (alügynök) ideiglenes tagja lejárattal; `member sweep` leveszi, a feladata a foglalás-elavulás útján átvehetővé válik. A régi `setInterval`-os takarítás és `Math.random()` azonosító helyett kifejezett söprés és determinisztikus azonosító.
-- `colony member preset <név>`: a hiányzó beépített tagok pótlása a 10 szereplistára (`standard`), és egy opcionális, régi **15 ügynökös** sablon (`legacy-15`), amely a tagokat `offline` állapotban hozza létre (az `offline` tag nem szavaz és nem kap feladatot, amíg egy host be nem jelentkezik helyette).
+- **Ideiglenes tag – megvalósítva:** `colony member add <név> --role R --ephemeral --ttl-min N`; a lejárat az állapotban tárolódik, nincs háttér-időzítő. A `member sweep` a tagot offline jelöli, a nyitott foglalásait azonnal átvehetővé teszi, az el nem kezdett hozzárendelést újra a sorba teszi. A tag és a feladatai az előzmények megőrzése miatt nem törlődnek. A kiosztás és a claim átvétele kizárja a lejárt tagot.
+- **Sablon – hátra van:** a `standard` pótolja a hiányzó beépített profilokat; a `legacy-15` sablon még nincs. A tervezett sablon 15 offline tagból áll, és host általi aktiválásig nem szavaz és nem kap feladatot.
 - A `broadcast`, `selectOptimalSwarm` és a föderációs szavazás hálózati/több telepítéses: P10.
 
 ### P11 – Anomália-sor és Exobiológus

@@ -13,7 +13,7 @@
  */
 
 export type ClaimStatus = 'active' | 'blocked' | 'handoff_pending' | 'stealable' | 'closed';
-export type StealableReason = 'stale' | 'blocked' | 'voluntary';
+export type StealableReason = 'stale' | 'blocked' | 'voluntary' | 'member_expired';
 export type ClaimOutcome = 'completed' | 'failed' | 'released';
 
 export interface ClaimPolicy {
@@ -177,6 +177,18 @@ export class ClaimLedger {
         this.markStealable(claim, reason, now, this.policy.graceMinutes * MINUTE, 'sweep');
         changed.push(claim);
       }
+    }
+    return changed;
+  }
+
+  /** Make every open claim held by an expired temporary member immediately transferable. */
+  public expireHolder(holderId: string, now: number): Claim[] {
+    const changed: Claim[] = [];
+    for (const claim of this.claims.values()) {
+      if (claim.holderId !== holderId || claim.status === 'closed' || claim.status === 'stealable') continue;
+      claim.handoff = undefined;
+      this.markStealable(claim, 'member_expired', now, 0, 'member-sweep');
+      changed.push(claim);
     }
     return changed;
   }

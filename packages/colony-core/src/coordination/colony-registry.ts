@@ -1,4 +1,5 @@
 import { ADVISORY_ROLES, AgentRole, AgentStatus, ColonyMember, ColonyAgentCapabilities } from '../types.js';
+import { isEphemeralExpired } from './ephemeral-members.js';
 
 export interface RegisterMemberOptions {
   id?: string;
@@ -91,7 +92,7 @@ export class ColonyRegistry {
     if (!member) return;
 
     member.currentTaskIds = member.currentTaskIds.filter((id) => id !== taskId);
-    member.status = member.currentTaskIds.length === 0 ? 'idle' : 'busy';
+    member.status = isEphemeralExpired(member) ? 'offline' : member.currentTaskIds.length === 0 ? 'idle' : 'busy';
     member.lastActiveAt = Date.now();
   }
 
@@ -104,7 +105,7 @@ export class ColonyRegistry {
   }): ColonyMember[] {
     return this.getAllMembers().filter((member) => {
       // Must not be in error or offline status
-      if (member.status === 'offline' || member.status === 'error') {
+      if (member.status === 'offline' || member.status === 'error' || isEphemeralExpired(member)) {
         return false;
       }
 
