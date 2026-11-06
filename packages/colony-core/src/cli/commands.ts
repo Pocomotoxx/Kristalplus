@@ -13,6 +13,7 @@ import { scanText } from '../injection-scan.js';
 import { REDACT_KINDS, redactText, RedactKind } from '../redact.js';
 import { aggregateDecision, checkDestructive, checkDiffSize, checkSecrets, checkToolAllowed, GateResult } from '../gates.js';
 import { buildTopology, isFullyConnected, shortestPath, TOPOLOGY_TYPES, TopologyType } from '../topology.js';
+import { synthesizeReports } from '../chief/synthesis.js';
 
 export interface CommandResult {
   code: number;
@@ -37,6 +38,7 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   task add <title> <description>          [--role R] [--after id,id] [--priority P] [--consensus QUORUM] [--review [--max-review-rounds N]]
   review <taskId> --as <reviewer> (--approve|--reject) --reason <text>   a rejection sends the work back; after N rejections (default 3) the task goes on hold for the user
   plan <taskId> [--kind K] [--apply]      analyze a task and propose its steps, waves and strategy; --apply creates them as tasks
+  synthesize <taskId>                    compare completed child reports and return their lexical medoid and outliers
   health [--queue-depth N] [--long-wait-min N]   groups, bottlenecks, alerts, recommendations (read-only, heuristic thresholds)
   score <taskId>                       rank the members for a task (heuristic weights), with backups and why the others cannot
   member list | member preset standard    list members; add the built-in roles a colony is missing
@@ -519,6 +521,21 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         ...(uncovered.length ? { planWarnings: uncovered } : {}),
         note: 'The parent waits for its last step and is completed last, as the sign-off.',
       });
+    }
+
+    case 'synthesize': {
+      const task = sub ? hub.orchestrator.getTask(sub) : undefined;
+      if (!task) throw new CliError(`task '${sub ?? ''}' not found`);
+      const children = hub.orchestrator.getAllTasks()
+        .filter((child) => child.parentId === task.id && child.status === 'completed' && child.outputResult !== undefined)
+        .map((child) => ({
+          task: { id: child.id, title: child.title },
+          text: typeof child.outputResult === 'string' ? child.outputResult : (JSON.stringify(child.outputResult) ?? String(child.outputResult)),
+          reporterId: child.assignedAgentId,
+        }))
+        .filter((child) => child.text.trim().length > 0);
+      if (children.length === 0) throw new CliError(`task '${task.id}' has no completed child reports to synthesize`);
+      return reply({ synthesis: synthesizeReports(children) });
     }
 
     case 'health': {

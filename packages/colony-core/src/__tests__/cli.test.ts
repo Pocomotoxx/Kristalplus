@@ -32,6 +32,34 @@ test('commands run without boot and initialize built-in members on first use', a
   assert.equal(added.code, 0);
 });
 
+test('synthesize compares completed child reports without calling a model', async () => {
+  const run = await project('synthesize');
+  const created = await run('task', 'add', 'Research topic', 'x'.repeat(220), '--role', 'researcher');
+  const parentId = created.out.task.id;
+  const plan = await run('plan', parentId, '--kind', 'research', '--apply');
+  assert.equal(plan.code, 0);
+  assert.equal(plan.out.children.length, 4);
+
+  const results = [
+    'Sources show stable patterns and a reliable baseline.',
+    'Evidence shows stable patterns with a reliable baseline.',
+    'The report supports stable patterns and a reliable baseline.',
+    'Verification confirms a reliable baseline and stable patterns.',
+  ];
+  for (const [index, child] of plan.out.children.entries()) {
+    const next = await run('next', '--as', child.requiredRole);
+    assert.equal(next.code, 0);
+    assert.equal(next.out.task.id, child.id);
+    assert.equal((await run('done', child.id, '--result', results[index])).code, 0);
+  }
+
+  const synthesis = await run('synthesize', parentId);
+  assert.equal(synthesis.code, 0);
+  assert.equal(synthesis.out.synthesis.heuristic, true);
+  assert.equal(synthesis.out.synthesis.reports.length, 4);
+  assert.ok(synthesis.out.synthesis.agreement.terms.includes('stable'));
+});
+
 test('boot seeds the built-in members once and reports UNVERIFIABLE outside git', async () => {
   const run = await project('boot');
   const first = await run('boot');

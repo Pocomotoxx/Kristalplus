@@ -49,7 +49,7 @@ A beépített tagok így 6-ról 11-re nőnek (`director`, `architect`, `engineer
 
 ## Fázisok
 
-> **Állapot:** a P0–P6 kész (2026-11-01), 248 teszt zöld. Az eredmények a fázisok szakaszainak végén.
+> **Állapot:** a P0–P6 és P8 megvalósítva; P7, P9 és P11 még hátra van. A P8 Colony-native, modellhívás nélküli szintézis; részletei alább.
 
 ### P0 – Előkészítés (kicsi, kód nélkül)
 
@@ -133,12 +133,15 @@ A terv szerint a Deputy a Chief döntéseit auditálja: célcsúszás, végtelen
 - **`chief-override`:** egyoldalú döntés, csak három típusra (vészhelyzeti művelet, tag leállítása, prioritás-felülbírálat). **Hatalom, nem szavazás**, ezért: csak `director` szerepű tag hívhatja, indoklás kötelező, mindig az auditnaplóba kerül, a `status` külön jelzi, és **a Deputy utólag megjelöli** (`watch` jelez, ha nincs átnézése). A felhasználó a végső döntő; a P5 tartása felülírhatja a következményeit.
 - A `propose` kiterjesztése; tesztek a súlyozott kvórumra és a visszaélésre (nem `director`, hiányzó indoklás, nem engedett típus).
 
-### P8 – Több tag kimenetének összegzése (az attention-coordinator maradéka)
+### P8 – Több tag kimenetének szintézise
 
-- A régi fájl hat figyelemmechanizmust kínál (multi-head, flash, linear, hyperbolic, moe, graph-rope). A saját fejléce szerint a flash gyorsulása „unverified". 10–15 tagnál a pontos softmax-figyelem triviálisan gyors, a közelítések nem adnak semmit.
-- Átvesszük a lényeget: `colony synthesize <feladat>`: több jelentésből kiválasztja a „középsőt" (amelyik a többihez a leghasonlóbb), megadja az egyetértési pontot és a kilógókat. A régi `neural/utils/self-consistency.ts` (134 sor) ide illik, azt is át kell nézni.
-- **Korlát:** a hasonlóság szóegyezést mér, nem jelentést. A kimenet jelzi.
-- Kimarad: flash, linear, hyperbolic, graph-rope.
+Állapot: **megvalósítva** a `chief/synthesis.ts` modulban és a `synthesize <taskId>` CLI-parancsban.
+
+A Colony a megadott szülőfeladat közvetlen, lezárt részfeladatainak jelentéseit veszi figyelembe. Jaccard-tokenhasonlósággal kiválasztja a többi jelentéshez legközelebb eső medoidot, felsorolja a jelentések legalább 60%-ában előforduló kifejezéseket, és megjelöli a 0,2 alatti hasonlóságú kilógókat. Az eredmény legfeljebb 4000 karaktert mutat forrásonként, és megőrzi a feladatazonosítót, a címet, valamint a jelentő tag azonosítóját.
+
+Ez saját, determinisztikus Colony-megvalósítás; a régi figyelem- vagy self-consistency-kódot nem másolja, és nem hív modellt. A hasonlóság szóalapú, nem szemantikus, nem méri a helyességet. A Colony bizonyítékcsomagot ad; a host írja meg a végső narratív összegzést és ellenőrzi a forrásokat.
+
+A tiszta szintézismodul 3 egységtesztje lefutott; a teljes csomag buildje és a CLI-integrációs teszt ebben a környezetben még nincs ellenőrizve.
 
 ### P9 – Ideiglenes tagok és sablonok (a federation-hub használható része)
 
@@ -197,7 +200,7 @@ Hálózat nélkül csak git-alapú csomagcsere lehet (hash-ellenőrzött export 
 | P10 | P9 | külön terv | – |
 | P11 | P1, P5, P6 | ~450 sor + tesztek | közepes (a hipotézisek minősége, a `cold` keresés számlálója a tárban) |
 
-Ajánlott menet: P0 → P1 → P2 → P4 → P3 → P5 → P6 → **P11** → P7 → P8 → P9. Mindegyik külön commit, tesztekkel és a README, migrációs térkép és leltár frissítésével, ahogy eddig.
+Ajánlott menet innen: P7 (súlyozott szavazás és Chief override) → P9 (ideiglenes tagok) → P11 (anomália-életút). Az átültetés másik csomagterületeit a leltár szerint kell sorra venni.
 
 ## Döntések
 
