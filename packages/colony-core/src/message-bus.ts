@@ -1,4 +1,4 @@
-import { ColonyEvent } from './types.js';
+import type { ColonyEvent } from './types.js';
 
 export type EventHandler<T = unknown> = (event: ColonyEvent<T>) => void | Promise<void>;
 

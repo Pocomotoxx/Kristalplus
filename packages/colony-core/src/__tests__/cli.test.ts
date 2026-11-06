@@ -200,6 +200,21 @@ test('propose --strategy derives the quorum from the active members and validate
   assert.equal((await run('done', id, '--result', 'shipped')).code, 0);
 });
 
+test('weighted proposal records Colony performance and health weights in votes and audit', async () => {
+  const run = await project('weighted-strategy');
+  const id = (await run('task', 'add', 'Weighted decision', 'needs weighted review', '--role', 'engineer', '--consensus', '2')).out.task.id;
+  const proposal = (await run('propose', id, 'accept?', '--as', 'engineer', '--strategy', 'weighted')).out.proposal;
+  assert.equal(proposal.strategy, 'weighted');
+  assert.equal(Object.keys(proposal.voterWeights).length, proposal.voters);
+  assert.ok(proposal.quorum > Object.values(proposal.voterWeights).reduce((a: number, b: number) => a + b, 0) / 2);
+  const reviewerId = (await run('member', 'list')).out.members.find((member: any) => member.role === 'reviewer').id;
+  const vote = await run('vote', proposal.id, '--as', reviewerId, '--approve', '--reason', 'reviewed');
+  assert.equal(vote.code, 0);
+  assert.equal(vote.out.voteWeight, proposal.voterWeights[reviewerId]);
+  assert.equal(vote.out.proposal.votes[0].weight, vote.out.voteWeight);
+  assert.equal(vote.out.proposal.status, 'open');
+});
+
 test('topology prints the graph, finds paths and validates its options', async () => {
   const run = await project('topology');
   await run('boot');

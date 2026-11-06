@@ -14,6 +14,7 @@ import { REDACT_KINDS, redactText, RedactKind } from '../redact.js';
 import { aggregateDecision, checkDestructive, checkDiffSize, checkSecrets, checkToolAllowed, GateResult } from '../gates.js';
 import { buildTopology, isFullyConnected, shortestPath, TOPOLOGY_TYPES, TopologyType } from '../topology.js';
 import { synthesizeReports } from '../chief/synthesis.js';
+import { computeMemberStats } from '../chief/member-stats.js';
 
 export interface CommandResult {
   code: number;
@@ -46,7 +47,7 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   done <taskId> --result <text>           complete a task; a real, non-empty result is required
                                           [--quality 0..1] [--verified-by-test]   what you report; the colony learns from it but cannot check it
   fail <taskId> --error <text>            mark a task failed  [--quality 0..1: how far it got]
-  propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous] [--timeout-min M] [--data text]
+  propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous|weighted] [--timeout-min M] [--data text]
   topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
   check                                   run gates BEFORE acting: [--command TEXT] [--text TEXT] [--file PATH [--diff-lines N] [--threshold N]]
                                           [--tool NAME --allow a,b*]; exit 3 on "block". A gate is a check you call, not an interceptor.
@@ -809,8 +810,18 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const timeoutMin = values['timeout-min'] ? Number(values['timeout-min']) : 60;
       if (quorum !== undefined && (!Number.isInteger(quorum) || quorum < 1)) throw new CliError('--quorum must be a positive integer');
       if (!(timeoutMin > 0)) throw new CliError('--timeout-min must be positive');
-      // Eligible voters: every member that is neither offline nor in error.
-      const voters = hub.registry.getAllMembers().filter((m) => m.status !== 'offline' && m.status !== 'error' && m.role !== 'exobiologist').length;
+      // Freeze the electorate and its Chief-derived weights at proposal creation.
+      const eligible = hub.registry.getAllMembers().filter((m) => m.status !== 'offline' && m.status !== 'error' && m.role !== 'exobiologist');
+      const voters = eligible.length;
+      const voterWeights = strategy === 'weighted'
+        ? Object.fromEntries([...computeMemberStats(hub.registry.getAllMembers(), hub.orchestrator.getAllTasks(), hub.claims.list()).entries()]
+            .filter(([id]) => eligible.some((member) => member.id === id))
+            .map(([id, stats]) => {
+              const performance = stats.avgQuality === null ? stats.successRate : 0.7 * stats.successRate + 0.3 * stats.avgQuality;
+              const health = Math.max(0, Math.min(1, 1 - 0.3 * stats.staleClaims));
+              return [id, Math.round(performance * health * 10000) / 10000] as const;
+            }))
+        : undefined;
 
       const proposal = await hub.consensus.submitProposal({
         taskId: task.id,
@@ -820,6 +831,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         quorum,
         strategy,
         voters: strategy ? voters : undefined,
+        voterWeights,
         timeoutMs: timeoutMin * 60_000,
       });
       await hub.orchestrator.updateTaskProgress(task.id, proposer.id, 'consensus');
@@ -837,9 +849,10 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const [voter] = resolveMembers(session, values.as);
       if (voter.role === 'exobiologist') throw new CliError('the exobiologist is an advisory role and does not vote; its hypotheses go through `anomaly`');
       const proposal = await hub.consensus.castVote(sub, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason: values.reason });
-      log('proposal.vote', proposal.id, { voterId: voter.id, approve: Boolean(values.approve), confidence, status: proposal.status });
+      const recordedVote = proposal.votes.get(voter.id);
+      log('proposal.vote', proposal.id, { voterId: voter.id, approve: Boolean(values.approve), confidence, weight: recordedVote?.weight ?? null, status: proposal.status });
       await session.save();
-      return reply({ proposal: serializeProposal(proposal) });
+      return reply({ proposal: serializeProposal(proposal), voteWeight: recordedVote?.weight ?? null, ...(proposal.strategy === 'weighted' ? { note: 'Weight was captured at proposal creation from ledger-derived performance × health. It is heuristic and reflects outcomes reported by the host.' } : {}) });
     }
 
     case 'memory': {

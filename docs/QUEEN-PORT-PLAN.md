@@ -49,7 +49,7 @@ A beépített tagok így 6-ról 11-re nőnek (`director`, `architect`, `engineer
 
 ## Fázisok
 
-> **Állapot:** a P0–P6 és P8 megvalósítva; P7, P9 és P11 még hátra van. A P8 Colony-native, modellhívás nélküli szintézis; részletei alább.
+> **Állapot:** a P0–P6 és P8 megvalósítva; a P7 súlyozott szavazási része kész, a Chief override, P9 és P11 még hátra van. A P8 Colony-native, modellhívás nélküli szintézis; részletei alább.
 
 ### P0 – Előkészítés (kicsi, kód nélkül)
 
@@ -129,9 +129,9 @@ A terv szerint a Deputy a Chief döntéseit auditálja: célcsúszás, végtelen
 
 ### P7 – Két hiányzó szavazási mód
 
-- **`weighted`:** a szavazat súlya = a tag teljesítménye × egészsége (a régi képlet). A régi kódban ez sokáig hatástalan volt (a súlyok sosem jutottak el a számláláshoz, minden súlyozott döntés sima többség lett; egy 2026-os javítás hozta rendbe). Itt a súly a szavazat leadásakor kerül a szavazatba és az auditnaplóba, a számlálás tesztelve van arra, hogy a súly valóban számít.
-- **`chief-override`:** egyoldalú döntés, csak három típusra (vészhelyzeti művelet, tag leállítása, prioritás-felülbírálat). **Hatalom, nem szavazás**, ezért: csak `director` szerepű tag hívhatja, indoklás kötelező, mindig az auditnaplóba kerül, a `status` külön jelzi, és **a Deputy utólag megjelöli** (`watch` jelez, ha nincs átnézése). A felhasználó a végső döntő; a P5 tartása felülírhatja a következményeit.
-- A `propose` kiterjesztése; tesztek a súlyozott kvórumra és a visszaélésre (nem `director`, hiányzó indoklás, nem engedett típus).
+- **`weighted` – megvalósítva:** a javaslat létrehozásakor rögzített szavazati súly = a főkönyvből számolt teljesítmény × egészség. A teljesítmény a jelentett sikerarány (a jelentett minőség 30%-os részével, ha van ilyen); az egészség az elavult foglalásokból számolt heurisztika. A szavazat, az auditnapló és a proposal a súlyt együtt tárolja. A jóváhagyáshoz a támogató összsúly több mint fele kell; ha a hátralévő szavazók összsúlya sem érheti el, elutasítjuk. Ez determinisztikus, de a teljesítmény bemenete a host által jelentett.
+- **`chief-override` – hátra van:** egyoldalú döntés, csak három típusra (vészhelyzeti művelet, tag leállítása, prioritás-felülbírálat). **Hatalom, nem szavazás**, ezért: csak `director` szerepű tag hívhatja, indoklás kötelező, mindig az auditnaplóba kerül, a `status` külön jelzi, és **a Deputy utólag megjelöli** (`watch` jelez, ha nincs átnézése). A felhasználó a végső döntő; a P5 tartása felülírhatja a következményeit.
+- A `chief-override` külön, engedélyezett műveletekként marad hátra; csak director, kötelező indoklás és Deputy utóellenőrzés. A súlyozott kvórum és audit már megvalósult.
 
 ### P8 – Több tag kimenetének szintézise
 

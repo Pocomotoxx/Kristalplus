@@ -49,6 +49,34 @@ test('Consensus marks an expired proposal as timeout', async () => {
   assert.equal(engine.getProposal(p.id)?.status, 'timeout');
 });
 
+test('weighted consensus applies the frozen member weights, not vote count', async () => {
+  const engine = newEngine();
+  await assert.rejects(
+    () => engine.submitProposal({ ...base, strategy: 'weighted', voters: 0, voterWeights: {} }),
+    /at least one eligible voter/
+  );
+  const p = await engine.submitProposal({ ...base, strategy: 'weighted', voters: 3, voterWeights: { strong: 0.6, medium: 0.25, light: 0.15 } });
+  assert.equal(p.quorum, 0.5 + Number.EPSILON);
+  await assert.rejects(() => engine.castVote(p.id, { voterId: 'outsider', approve: true }), /not an eligible voter/);
+  const result = await engine.castVote(p.id, { voterId: 'strong', approve: true });
+  assert.equal(result.status, 'approved');
+  assert.equal(result.votes.get('strong')?.weight, 0.6);
+  const restored = newEngine();
+  restored.restore(engine.snapshot());
+  assert.equal(restored.getProposal(p.id)?.voterWeights?.strong, 0.6);
+});
+
+test('weighted consensus rejects when remaining possible approval weight misses quorum', async () => {
+  const engine = newEngine();
+  const p = await engine.submitProposal({ ...base, strategy: 'weighted', voters: 3, voterWeights: { a: 0.4, b: 0.35, c: 0.25 } });
+  await engine.castVote(p.id, { voterId: 'a', approve: true });
+  assert.equal(engine.getProposal(p.id)?.status, 'open');
+  await engine.castVote(p.id, { voterId: 'b', approve: false });
+  assert.equal(engine.getProposal(p.id)?.status, 'open');
+  const rejected = await engine.castVote(p.id, { voterId: 'c', approve: false });
+  assert.equal(rejected.status, 'rejected');
+});
+
 test('cosineSimilarity: identical, orthogonal, zero vector, dimension mismatch', () => {
   assert.ok(Math.abs(cosineSimilarity([1, 2, 3], [1, 2, 3]) - 1) < 1e-9);
   assert.equal(cosineSimilarity([1, 0], [0, 1]), 0);
