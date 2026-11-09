@@ -1,4 +1,4 @@
-# Ruflo → Colony migrációs térkép
+# Migrációs térkép: régi kód → Colony
 
 Állapot: 2026-10-31. Forrás: a repó tényleges tartalma és a [plant.md](../plant.md).
 
@@ -28,35 +28,35 @@ Nincs API-kulcs: a host (Cowork) maga a modell, a mag csak főkönyv. Ehhez kés
 
 Következmény: a modellszolgáltatós részek kivezetve (lásd a 2. szakaszt).
 
-## Átépítés, 1. szakasz: a Ruflo-kód félretétele (kész)
+## Átépítés, 1. szakasz: a Colony-kód félretétele (kész)
 
-A teljes Ruflo-kód (8316 fájl) a `legacy/ruflo/` alá került `git`-átnevezésként, tartalmi változtatás nélkül, a fájlok előzménye követhető. Ezzel:
+A teljes Colony-kód (8316 fájl) a `legacy/colony/` alá került `git`-átnevezésként, tartalmi változtatás nélkül, a fájlok előzménye követhető. Ezzel:
 - a gyökér tiszta Colony-azonosságot kapott: új `package.json` (`pnpm build` és `pnpm test` a `colony-core`-ra), új `.gitignore`, rövid `AGENTS.md`, `START_HERE.md`, `README.md`;
 - a régi `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.agents/` és `.githooks/` nem töltődik be a gyökérből indított hostokon;
-- a 36 régi workflow `legacy/ruflo/.github/workflows/` alatt van, és nem fut;
+- a 36 régi workflow `legacy/colony/.github/workflows/` alatt van, és nem fut;
 - a `colony-core` változatlan, és nem hivatkozik a régi kódra.
 
-A visszaállítás egyszerű: a `legacy/ruflo/` tartalma visszamozgatható a gyökérbe.
+A visszaállítás egyszerű: a `legacy/colony/` tartalma visszamozgatható a gyökérbe.
 
 ## Átépítés, 2. szakasz: az LLM-függés kivezetése (kész)
 
 A magban nincs többé modellszolgáltató, hálózati hívás vagy API-kulcs. Törölve:
 - `llm/providers.ts` (Gemini, OpenAI-kompatibilis adapterek);
 - `OpenAiCompatibleEmbeddingProvider` az `embedding-providers.ts` fájlból (marad a helyi, determinisztikus beágyazás);
-- `github-runner.ts` és a `kristal-colony-runner.yml` workflow (a repóban nem marad futó workflow);
+- `github-runner.ts` és a `colony-runner.yml` workflow (a repóban nem marad futó workflow);
 - `agents/colony-worker.ts` (a munkát a host végzi a `next` / `done` parancsokon át) és a hozzá tartozó `example.ts`, `example-neural.ts`;
-- `legacy/ruflo/CLAUDE.local.md` (személyes helyi beállításfájl).
+- `legacy/colony/CLAUDE.local.md` (személyes helyi beállításfájl).
 
 A `colony-core` build és mind a 30 teszt változatlanul zöld.
 
-A Ruflo a Colonynak csak váz, egy része: amit átvesz, azt modellszolgáltató nélkül veszi át.
+A régi kód a Colonynak csak váz: amit a Colony átvesz, azt modellszolgáltató nélkül veszi át.
 
-## Átépítés, 3. szakasz: a Ruflo-válogatás C listájának törlése (kész)
+## Átépítés, 3. szakasz: a Colony-válogatás C listájának törlése (kész)
 
-A [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md) C listája törölve: 5552 fájl (8316-ról 2764-re csökkent a `legacy/ruflo`). Törölve:
-- 12 `v3/@claude-flow` csomag (köztük `cli`, `providers`, `codex`, `browser`, `watermark`);
-- 30 LLM- vagy hostfüggő, illetve domain-specifikus plugin (köztük a 786 fájlos `ruflo-console`);
-- a Claude/Codex-konfiguráció (`.claude/`, `.agents/`, `.claude-plugin/`, `plugin/`, `chatgpt-plugin/`, `CLAUDE.md`, `AGENTS.md`), a `ruflo/` burkoló, a `v3/goal_ui`, `v3/implementation` és `v3/docs`.
+A [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md) C listája törölve: 5552 fájl (8316-ról 2764-re csökkent a `legacy/colony`). Törölve:
+- 12 `v3/@colony` csomag (köztük `cli`, `providers`, `codex`, `browser`, `watermark`);
+- 30 LLM- vagy hostfüggő, illetve domain-specifikus plugin (köztük a 786 fájlos `colony-console`);
+- a Claude/Codex-konfiguráció (`.claude/`, `.agents/`, `.claude-plugin/`, `plugin/`, `chatgpt-plugin/`, `CLAUDE.md`, `AGENTS.md`), a `colony/` burkoló, a `v3/goal_ui`, `v3/implementation` és `v3/docs`.
 
 Az A lista csomagjai a törlés előtt ellenőrizve: egyik sem függött a törölt csomagoktól. A Colony build és mind a 30 teszt zöld.
 
@@ -80,13 +80,13 @@ Az A lista csomagjai a törlés előtt ellenőrizve: egyik sem függött a tör�
 
 ## Még hátra
 
-| Terület (`legacy/ruflo/` alatt) | Megjegyzés |
+| Terület (`legacy/colony/` alatt) | Megjegyzés |
 |---|---|
-| `v3/@claude-flow/` A lista | `swarm`, `claims`, `neural`, `memory`, `shared`, `security`, `guidance`, `aidefence`, `plugin-agent-federation`, `performance`: átvétel egyenként, kolónia-szóhasználattal. |
-| `v3/@claude-flow/` B lista | `hooks`, `embeddings` (csak a helyi rész), `mcp`: döntés, ha szükség lesz rájuk. |
-| `plugins/` (18 maradt) | `ruflo-adr`, `-agentdb`, `-aidefence`, `-arena`, `-daa`, `-ddd`, `-federation`, `-goals`, `-graph-intelligence`, `-knowledge-graph`, `-observability`, `-protector`, `-rag-memory`, `-ruvector`, `-rvf`, `-security-audit`, `-swarm`, `-workflows`. Egyenként döntés. |
+| `v3/@colony/` A lista | `swarm`, `claims`, `neural`, `memory`, `shared`, `security`, `guidance`, `aidefence`, `plugin-agent-federation`, `performance`: átvétel egyenként, Colony-szóhasználattal. |
+| `v3/@colony/` B lista | `hooks`, `embeddings` (csak a helyi rész), `mcp`: döntés, ha szükség lesz rájuk. |
+| `plugins/` (18 maradt) | `colony-adr`, `-agentdb`, `-aidefence`, `-arena`, `-daa`, `-ddd`, `-federation`, `-goals`, `-graph-intelligence`, `-knowledge-graph`, `-observability`, `-protector`, `-rag-memory`, `-ruvector`, `-rvf`, `-security-audit`, `-swarm`, `-workflows`. Egyenként döntés. |
 | `v3/crates`, `Cargo.toml`, `crates/` | Rust federációs rész, csak a federációval együtt. |
-| `docs/`, `scripts/`, `tests/`, `.github/`, `.harness/`, gyökérfájlok | Maradék Ruflo-anyag. Az átvétel végén törlendő. |
+| `docs/`, `scripts/`, `tests/`, `.github/`, `.harness/`, gyökérfájlok | Maradék Colony-anyag. Az átvétel végén törlendő. |
 
 ## Javasolt sorrend a folytatáshoz
 

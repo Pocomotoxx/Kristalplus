@@ -1,14 +1,14 @@
-# Kristalplus – Kristal Colony
+# Kristalplus – Colony
 
-Modellfüggetlen **kolónia-mag** TypeScriptben. Nem hív LLM-et és nem kér API-kulcsot: a **host** (például a Cowork) maga a modell, a Colony pedig a főkönyve. Egy paranccsal (`colony boot`) betölti a rendszert, utána a host parancsokon keresztül dolgozik: feladatot vesz fel, kér, teljesít, szavaz, és a kolónia vektoros memóriájába ír. Az állapot a repóban él (`.colony/`).
+Modellfüggetlen **Colony-mag** TypeScriptben. Nem hív LLM-et és nem kér API-kulcsot: a **host** (például a Cowork) maga a modell, a Colony pedig a főkönyve. Egy paranccsal (`colony boot`) betölti a rendszert, utána a host parancsokon keresztül dolgozik: feladatot vesz fel, kér, teljesít, szavaz, és a Colony vektoros memóriájába ír. Az állapot a repóban él (`.colony/`).
 
-> **Állapot: átmenet alatt.** A projekt a Ruflo / Claude Flow v3 rajalapú architektúrájából indult, de már csak inspirációs alap: a Colonynak a Ruflo csupán egy része, váza. Az új mag a [`packages/colony-core`](packages/colony-core). A régi Ruflo-kód a [`legacy/ruflo`](legacy/README.md) mappába került: befagyasztva, build és CI nélkül, és fokozatosan lesz átvéve vagy kivezetve. Részletek: [docs/COLONY-MIGRATION.md](docs/COLONY-MIGRATION.md) és [plant.md](plant.md).
+> **Állapot: átmenet alatt.** A projekt egy korábbi, rajalapú architektúrából indult, amely már csak inspirációs alap. Az új mag a [`packages/colony-core`](packages/colony-core). A régi kód a [`legacy/colony`](legacy/README.md) mappába került: befagyasztva, build és CI nélkül, és fokozatosan lesz átvéve vagy kivezetve. Részletek: [docs/COLONY-MIGRATION.md](docs/COLONY-MIGRATION.md) és [plant.md](plant.md).
 
 ## Fogalmak
 
-A korábbi „raj” (swarm) helyett mindenhol **kolónia** (colony) a terminológia.
+A korábbi „raj” (swarm) helyett mindenhol **Colony** a terminológia.
 
-| Régi (Ruflo) | Új (Colony) |
+| Régi | Új |
 |---|---|
 | Swarm | Colony |
 | Queen / coordinator | `ColonyHub` (vezérlő) |
@@ -62,17 +62,17 @@ node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres ere
 | `status` | Tagok, feladatok, nyitott javaslatok. |
 | `task add <cím> <leírás>` | Új feladat (`--role`, `--after id,id`, `--priority`, `--consensus <kvórum>`). Szerep nélkül a MoE-router választ. |
 | `next --as <szerep\|tag>` | A szerepnek kiosztott következő feladat, a szerep utasításával és a releváns memóriával. |
-| `done <id> --result <szöveg> [--quality 0..1] [--verified-by-test]` | Lezárja a feladatot. Konszenzusos feladatnál előbb jóváhagyott javaslat kell. A kolónia megjegyzi a megoldást. A `--quality` és a `--verified-by-test` a **host állítása**: a kolónia tanul belőle (router, tagstatisztika, kiosztás), de nem méri és nem ellenőrzi. A jutalom sikernél `0,2 + 0,8 × minőség`, megadás nélkül 0,5. |
+| `done <id> --result <szöveg> [--quality 0..1] [--verified-by-test]` | Lezárja a feladatot. Konszenzusos feladatnál előbb jóváhagyott javaslat kell. A Colony megjegyzi a megoldást. A `--quality` és a `--verified-by-test` a **host állítása**: a Colony tanul belőle (router, tagstatisztika, kiosztás), de nem méri és nem ellenőrzi. A jutalom sikernél `0,2 + 0,8 × minőség`, megadás nélkül 0,5. |
 | `fail <id> --error <szöveg> [--quality 0..1]` | Hibásnak jelöli a feladatot. A jutalom mindig negatív: `-(1 - 0,3 × minőség)`, megadás nélkül -1. |
 | `propose <id> <téma> --as <tag>` | Szavazást indít (`--quorum N` vagy `--strategy majority\|supermajority\|byzantine\|unanimous`, `--timeout-min`, alapértelmezés: 60 perc). Stratégiánál a szavazók a nem offline és nem hibás tagok. |
 | `topology` | A tagok kapcsolati gráfja (`--type mesh\|star\|tree\|hybrid`, `--fanout`, `--degree`, `--from` és `--to` a legrövidebb úthoz). Csak olvas. |
-| `review <feladat> --as <reviewer> --approve\|--reject --reason …` | A Critic-kör. Az elutasítás visszaküldi a feladatot `in_progress`-be, a tag a `next` kimenetében látja az indoklást (`reviewFeedback`). A harmadik elutasítás (feladatonként `--max-review-rounds N`, 1–20) után a feladat tartásba kerül, és a felhasználónak kell döntenie; a `hold release` friss körszámot ad. A `task add --review` jóváhagyáshoz köti a lezárást; az elutasítás enélkül is blokkolja a `done`-t, amíg új jóváhagyás nincs. Csak `reviewer` szerepű tag értékelhet, és nem azt a feladatot, amit ő tart. A jóváhagyás a reviewer állítása, nem tesztredmény; a kolónia nem ellenőrzi. |
+| `review <feladat> --as <reviewer> --approve\|--reject --reason …` | A Critic-kör. Az elutasítás visszaküldi a feladatot `in_progress`-be, a tag a `next` kimenetében látja az indoklást (`reviewFeedback`). A harmadik elutasítás (feladatonként `--max-review-rounds N`, 1–20) után a feladat tartásba kerül, és a felhasználónak kell döntenie; a `hold release` friss körszámot ad. A `task add --review` jóváhagyáshoz köti a lezárást; az elutasítás enélkül is blokkolja a `done`-t, amíg új jóváhagyás nincs. Csak `reviewer` szerepű tag értékelhet, és nem azt a feladatot, amit ő tart. A jóváhagyás a reviewer állítása, nem tesztredmény; a Colony nem ellenőrzi. |
 | `watch [--task id]` | A Deputy mechanikus ellenőrzése (csak olvas): azonos címmel ismétlődő hibák, ugyanaz a feladat újra és újra létrehozva, gazdát cserélgető foglalás, elakadt feladat, átnézetlen `chief.override`, a saját magától feloldott tartás, a napló sértetlensége és a boot-horgony, gyenge szöveges célcsúszás-jel (csak felbontott feladatnál). A `done` és `fail` kimenete is jelzi (`deputy`), ha az adott feladatról van mondanivalója; ez tanács, nem kapu. |
-| `hold <feladat> --as <auditor> --reason …`, `hold release <feladat> --as <tag> --note …` | Tartás: a feladat nem fejezhető be (`done`) és nem osztható ki, amíg fel nem oldják; a `fail` marad. Tartást csak `auditor` szerepű tag tehet. A feloldás kötelező megjegyzése a host jelentése arról, mit döntött a felhasználó: **a kolónia nem tudja ellenőrizni, hogy ember döntött-e.** Ha ugyanaz oldja fel, aki tette, a `watch` jelzi. |
+| `hold <feladat> --as <auditor> --reason …`, `hold release <feladat> --as <tag> --note …` | Tartás: a feladat nem fejezhető be (`done`) és nem osztható ki, amíg fel nem oldják; a `fail` marad. Tartást csak `auditor` szerepű tag tehet. A feloldás kötelező megjegyzése a host jelentése arról, mit döntött a felhasználó: **a Colony nem tudja ellenőrizni, hogy ember döntött-e.** Ha ugyanaz oldja fel, aki tette, a `watch` jelzi. |
 | `plan <feladat> [--kind K] [--apply]` | Feladatelemzés: fajta (szerepből vagy szavakból), komplexitás, becsült idő (heurisztikus; legalább 3 mért befejezés után mért), témák, hasonló korábbi munka, bizonyosság, és a felbontás lépései szerepekkel, hullámokkal és stratégiával (`single`, `sequential`, `pipeline`, `parallel`, `fan-out-fan-in`, `hybrid`, a függőségi gráfból levezetve). Alapból csak javasol. Az `--apply` a lépéseket valódi feladatként hozza létre; a szülő az utolsó lépésre vár, és utolsóként zárul (jóváhagyás). Rövid (200 karakter alatti) feladat, ellenőrzés és részfeladat nem bomlik. |
-| `health [--queue-depth N] [--long-wait-min N]` | A kolónia egészsége (csak olvas): öt csoport (vezetés, kutatás, elemzés, végrehajtás, minőség) hibaaránnyal és válaszidővel, szűk keresztmetszetek (hosszú sor, hibás tagok, elavult vagy blokkolt foglalás, feladat, amit senki nem vehet át, bukott függőségre váró feladat), riasztások, javaslatok, átbocsátás, szavazási sikerarány. A küszöbök és a képletek heurisztikusak. |
+| `health [--queue-depth N] [--long-wait-min N]` | A Colony egészsége (csak olvas): öt csoport (vezetés, kutatás, elemzés, végrehajtás, minőség) hibaaránnyal és válaszidővel, szűk keresztmetszetek (hosszú sor, hibás tagok, elavult vagy blokkolt foglalás, feladat, amit senki nem vehet át, bukott függőségre váró feladat), riasztások, javaslatok, átbocsátás, szavazási sikerarány. A küszöbök és a képletek heurisztikusak. |
 | `score <feladat>` | A tagok rangsora a feladatra összetevőkre bontva, az elsődleges és legfeljebb két tartalék tag, és hogy a többi miért nem jöhet szóba. |
-| `member list\|preset standard` | Tagok listája; a hiányzó beépített szerepek pótlása egy régebbi főkönyvben (idempotens). A boot csak üres kolóniát tölt fel. |
+| `member list\|preset standard` | Tagok listája; a hiányzó beépített szerepek pótlása egy régebbi főkönyvben (idempotens). A boot csak üres Colonyt tölt fel. |
 | `claim list\|sweep` | Ki mit foglal (`list`, csak olvas). A `sweep` stealable-re állítja az elavult (30 perc tevékenység nélkül) és a túl régen blokkolt (60 perc) foglalásokat. |
 | `claim heartbeat\|block\|unblock\|release <feladat> --as <tag>` | Életjel (`--progress 0..100`; a stealable foglalást visszaveszi), blokkolás (`--reason`), feloldás, lemondás (azonnal átvehető). |
 | `claim steal <feladat> --as <tag>` | Stealable foglalás átvétele a türelmi idő (10 perc) után, a tag kapacitásán belül. A feladat új gazdát kap. |
@@ -85,7 +85,7 @@ node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres ere
 | `vote <javaslat> --as <tag> --approve\|--reject --reason <szöveg>` | Szavaz (`--confidence 0..1`). Indoklás kötelező. |
 | `memory add\|search` | Kézi memóriaírás és -keresés (`--ns`, `--k`). |
 
-A boot állapotai (a Krista bootlogikáját követve):
+A boot állapotai (a Colony bootlogikája):
 - `LOADED`: az állapotfájlok érvényesek, a git-revízió ismert.
 - `UNVERIFIABLE`: az állapot érvényes, de a revízió ismeretlen. Tartalmi munka mehet, repómódosítás nem.
 - `BLOCKED`: egy állapotfájl hibás, vagy egy kötelező szabályfájl hiányzik, üres vagy a szabálykönyvtáron kívülre mutat. A boot ezt rögzíti, és a munkaparancsok megtagadják a futást, amíg a hiba ki nincs javítva. Hibás állapotfájlt a rendszer soha nem ír felül csendben.
@@ -108,7 +108,7 @@ START_HERE.md              indítóutasítás hostoknak
 AGENTS.md                  rövid belépő hostoknak
 plant.md                   migrációs terv
 docs/COLONY-MIGRATION.md   migrációs térkép és hátralévő munka
-legacy/ruflo/              a régi Ruflo-kód, befagyasztva (lásd legacy/README.md)
+legacy/colony/             a régi kód, befagyasztva (lásd legacy/README.md)
 ```
 
 A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
@@ -120,9 +120,9 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
 - A beépített tagok (11 szerep) fixek; a `member preset standard` csak pótolja a hiányzókat. Egyedi tag felvétele és az ideiglenes tagok még nincsenek (P9 a [tervben](docs/QUEEN-PORT-PLAN.md)).
 - A `plant.md` V. és VI. fázisa nincs leírva, és nincs bennük kész kód.
-- A `legacy/ruflo` mappából még nem döntöttük el, melyik plugin és csomag kerül át a Colonyba, és melyik törlendő.
-- A régi Ruflo `LICENSE` fájlja nincs a másolatban (lásd [legacy/README.md](legacy/README.md)).
+- A `legacy/colony` mappából még nem döntöttük el, melyik plugin és csomag kerül át a Colonyba, és melyik törlendő.
+- A régi Colony `LICENSE` fájlja nincs a másolatban (lásd [legacy/README.md](legacy/README.md)).
 
 ## Eredet és licenc
 
-A projekt a Ruflo / Claude Flow (ruvnet) nyílt forráskódú munkájából inspirálódott, és a repó a `legacy/ruflo` mappában még tartalmazza annak kódját. Az átvett részek licencfeltételeit a végleges kivezetés előtt ellenőrizni kell. A `colony-core` saját, újraírt kód.
+A repó a `legacy/colony` mappában még tartalmazza a korábbi, rajalapú rendszer kódját. Az átvett részek licencfeltételeit a végleges kivezetés előtt ellenőrizni kell. A `colony-core` saját, újraírt kód.

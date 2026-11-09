@@ -1,0 +1,34 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@colony/security": ["./@colony/security/src"],
+      "@colony/memory": ["./@colony/memory/src"],
+      "@colony/integration": ["./@colony/integration/src"],
+      "@colony/swarm": ["./@colony/swarm/src"],
+      "@colony/performance": ["./@colony/performance/src"],
+      "@colony/cli": ["./@colony/cli/src"],
+      "@colony/neural": ["./@colony/neural/src"],
+      "@colony/testing": ["./@colony/testing/src"],
+      "@colony/deployment": ["./@colony/deployment/src"],
+      "@colony/shared": ["./@colony/shared/src"],
+      "@colony/hooks": ["./@colony/hooks/src"]
+    }
+  },
+  "references": [
+    { "path": "./@colony/shared" },
+    { "path": "./@colony/security" },
+    { "path": "./@colony/memory" },
+    { "path": "./@colony/integration" },
+    { "path": "./@colony/swarm" },
+    { "path": "./@colony/performance" },
+    { "path": "./@colony/cli" },
+    { "path": "./@colony/neural" },
+    { "path": "./@colony/testing" },
+    { "path": "./@colony/deployment" },
+    { "path": "./@colony/hooks" }
+  ],
+  "include": [],
+  "exclude": ["node_modules", "dist"]
+}

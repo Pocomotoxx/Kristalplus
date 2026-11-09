@@ -1,13 +1,13 @@
-# Migrációs és Átalakítási Terv: Kristalplus -> Kristal Modern Colony
+# Migrációs és Átalakítási Terv: Kristalplus -> Colony
 
 > **Frissítés (2026-10-31):** a terv eredeti LLM-es elemei kivezetve. A 3. alapelv (provider-agnosztikus LLM-interfészek), a 4.3 (`ColonyWorker`) és a teljes VII. fázis (`providers.ts`, `github-runner.ts`, GitHub Actions workflow) már nincs a kódban. A host (Cowork) maga a modell, a mag csak főkönyv, szavazás és helyi memória. Az aktuális állapot: [docs/COLONY-MIGRATION.md](docs/COLONY-MIGRATION.md). Az alábbi szöveg történeti terv.
 
 ## 1. Áttekintés és Célok
 
-A projekt célja a `D:\Kristalplus\Kristalplus` (Claude-Flow / Ruflo v3 architektúra) teljes átültetése egy **tiszta, modern TypeScript / ESM / Bun** alapú keretrendszerbe, megszüntetve a közvetlen Claude / Ruflo függőségeket, miközben a működési logikát, metódusokat és robusztusságot hiánytalanul megőrizzük.
+A projekt célja a `D:\Kristalplus\Kristalplus` (a régi, rajalapú architektúra) teljes átültetése egy **tiszta, modern TypeScript / ESM / Bun** alapú keretrendszerbe, megszüntetve a közvetlen Claude-függőségeket, miközben a működési logikát, metódusokat és robusztusságot hiánytalanul megőrizzük.
 
 ### Alapelvek:
-1. **Név- és fogalomkonverzió**: A korábbi "Swarm" (raj) architektúra helyett egységesen a **"Colony" (Kolónia)** fogalmat és terminológiát alkalmazzuk (pl. ColonyHub, ColonyCoordinator, ColonyMember/Worker, QueenCoordinator helyett ColonyDirector/Controller).
+1. **Név- és fogalomkonverzió**: A korábbi "Swarm" (raj) architektúra helyett egységesen a **"Colony" (Colony)** fogalmat és terminológiát alkalmazzuk (pl. ColonyHub, ColonyCoordinator, ColonyMember/Worker, QueenCoordinator helyett ColonyDirector/Controller).
 2. **Platform & Runtime**: Modern ESM, Bun / Node modern runtime kompatibilitás, TypeScript strict mode, zéró felesleges Claude-specifikus lock-in.
 3. **Modell-függetlenség (LLM & Embeddings)**: Provider-agnosztikus interfészek (OpenAI, Gemini/Google AI, Anthropic, Ollama, Helyi modellek / ONNX / transformers).
 4. **Független és moduláris rétegek**: Clean Architecture / Domain Driven Design (DDD) minta követése: Domain -> Application -> Infrastructure -> Interfaces.
@@ -17,8 +17,8 @@ A projekt célja a `D:\Kristalplus\Kristalplus` (Claude-Flow / Ruflo v3 architek
 ## 2. Architektúra & Fő Modulok
 
 ```
-kristal-core/ (vagy packages/)
-├── colony/                # Korábbi Swarm - Kolónia raj- és ágenskoordináció
+colony-core/ (vagy packages/)
+├── colony/                # Korábbi Swarm - Colony raj- és ágenskoordináció
 │   ├── coordination/      # Feladat delegálás, Agent registry, ColonyHub
 │   ├── consensus/         # Byzantine fault tolerance, Raft, Gossip protokollok
 │   ├── attention/         # Attention / prioritás koordinátor
@@ -50,16 +50,16 @@ kristal-core/ (vagy packages/)
 - [x] **1.2 Közös típusok és interfészek (`types.ts`)**:
   - Feladatállapotok, ágens-állapotok, eseménybusz (`MessageBus`) és szavazási típusdefiníciók.
 
-### II. Fázis: Kolónia (Colony / Orchestrator) Modul Újraépítése
+### II. Fázis: Colony (Orchestrator) Modul Újraépítése
 - [x] **2.1 Belső Esemény- és Kommunikációs Busz (`MessageBus`)**:
-  - Helyi és elosztott aszinkron eseménycsere a kolónia tagjai között topic és wildcard támogatással.
+  - Helyi és elosztott aszinkron eseménycsere a Colony tagjai között topic és wildcard támogatással.
 - [x] **2.2 Ágens Nyilvántartó és Életciklus (`ColonyRegistry`)**:
   - Ágensek regisztrációja, kapacitáskezelés, állapotkövetés (`idle`, `busy`, `offline`), alkalmas ágens kereső.
-- [x] **2.3 Kolónia Feladat-Orchestrátor (`ColonyTaskOrchestrator`)**:
+- [x] **2.3 Colony Feladat-Orchestrátor (`ColonyTaskOrchestrator`)**:
   - Feladatok dekomponálása, függőségi lánc (`dependencies`) kezelése, automatikus delegálás.
 - [x] **2.4 Konszenzus és Döntéshozatal (`ConsensusEngine`)**:
   - Kvórum- és megbízhatósági súlyozású szavazási mechanizmusok tiszta TypeScriptben.
-- [x] **2.5 Kolónia Vezérlő (`ColonyHub`)**:
+- [x] **2.5 Colony Vezérlő (`ColonyHub`)**:
   - Központi API a feladatok indítására, felügyeletére és snapshot lekérdezésére.
 
 ### III. Fázis: Modell-Független Memória & Vektor Codex Rendszer
@@ -80,7 +80,7 @@ kristal-core/ (vagy packages/)
 
 ### VII. Fázis: GitHub-Bázisú Futtatási Környezet & Valós LLM Hívások
 - [x] **7.1 Lemez- és Git-alapú Vektor Memória Perzisztencia (`FileVectorStore`)**:
-  - A kolónia memóriáját, vektoros beágyazásait és a Reasoning Bank tapasztalatait a repó `.colony/memory.json` fájljába menti és onnan olvassa vissza automatikusan.
+  - A Colony memóriáját, vektoros beágyazásait és a Reasoning Bank tapasztalatait a repó `.colony/memory.json` fájljába menti és onnan olvassa vissza automatikusan.
 - [x] **7.2 Modell- és API-szolgáltatók (`providers.ts`)**:
   - **Google Gemini API** natív REST adapter (`GEMINI_API_KEY`).
   - **OpenAI / OpenRouter / Ollama** kompatibilis adapter (`OPENAI_API_KEY`, `OPENAI_BASE_URL`).
@@ -88,9 +88,9 @@ kristal-core/ (vagy packages/)
 - [x] **7.3 GitHub Runner és Belépési Pont (`github-runner.ts`)**:
   - A GitHub Actions környezetben közvetlenül futtatható belépési pont (`dist/github-runner.js`), amely környezeti változókból (`COLONY_TASK_TITLE`, `COLONY_TASK_DESC`) vagy parancssori argumentumokból veszi a feladatot.
   - Az eredményeket a `.colony/outputs/` mappába generálja JSON és formázott formátumban.
-- [x] **7.4 GitHub Actions Workflow (`kristal-colony-runner.yml`)**:
+- [x] **7.4 GitHub Actions Workflow (`colony-runner.yml`)**:
   - Automatikus rajt: manuális dispatch, Issue felcímkézése (`colony`), vagy Issue-komment (`/colony ...`).
-  - Automatikus memória-visszatöltés, LLM modellhívás a Kolónián keresztül, majd a megújult tudástár (`.colony/`) automatikus visszakommitolása a GitHub repóba.
+  - Automatikus memória-visszatöltés, LLM modellhívás a Colonyn keresztül, majd a megújult tudástár (`.colony/`) automatikus visszakommitolása a GitHub repóba.
 
 ---
 

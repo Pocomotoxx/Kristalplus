@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.colony/
+*.tsbuildinfo
+# Lockfile is regenerated inside the colony workspace; an isolated install pulls peer deps.
+package-lock.json

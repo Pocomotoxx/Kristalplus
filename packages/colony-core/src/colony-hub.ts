@@ -37,7 +37,7 @@ export class ColonyHub {
   public readonly router: MoERouter;
   public readonly reasoningBank: ReasoningBank;
 
-  constructor(config: ColonyHubConfig = { name: 'KristalColony' }) {
+  constructor(config: ColonyHubConfig = { name: 'Colony' }) {
     this.name = config.name;
     this.bus = new MessageBus(config.maxEventHistory || 2000);
     this.registry = new ColonyRegistry();

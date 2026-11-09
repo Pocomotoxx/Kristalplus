@@ -1,4 +1,4 @@
-# A `legacy/ruflo` leltára és válogatás
+# A `legacy/colony` leltára és válogatás
 
 Állapot: 2026-10-31. **A C lista törölve** (5552 fájl, külön commit, a git-előzményben megvan). Az A és B lista még javaslat: abból semmi nem lett átvéve vagy törölve.
 
@@ -10,13 +10,13 @@ A törlés előtt ellenőriztem, hogy az A lista egyik csomagja sem függ a tör
 - A forráskódban (teszt, dist és node_modules nélkül) kerestem szolgáltatóra, API-kulcsra és Claude Code-ra utaló szövegeket (`anthropic`, `openai`, `gemini`, `ollama`, `api_key`, `fetch(`, `Claude Code`). A találatok **fájlszámok**, nem egyenként átnézett hibák.
 - A kód tartalmát csak ezen a szinten néztem meg. Átvétel előtt minden csomagot át kell olvasni.
 
-Szempont: a Colony host-vezérelt, nincs benne modellszolgáltató, hálózati hívás és API-kulcs. A Ruflo egy váz: az kerül át, ami a Colony koordinációját, memóriáját, biztonságát és szabályait erősíti.
+Szempont: a Colony host-vezérelt, nincs benne modellszolgáltató, hálózati hívás és API-kulcs. A Colony egy váz: az kerül át, ami a Colony koordinációját, memóriáját, biztonságát és szabályait erősíti.
 
 ## A. Átvételre javasolt váz (v3 csomagok)
 
 | Csomag | Fájl | Forrássor | Szolgáltatóra utaló fájl | Mit adhat a Colonynak |
 |---|---|---|---|---|
-| `swarm` | 101 | ~17 900 | 0 | Koordináció, topológiák, hive-mind, konszenzus. A Colony `ColonyHub` és `ConsensusEngine` egyenes párja: kolóniává átnevezve ez a legfontosabb váz. |
+| `swarm` | 101 | ~17 900 | 0 | Koordináció, topológiák, hive-mind, konszenzus. A Colony `ColonyHub` és `ConsensusEngine` egyenes párja: Colonyvá átnevezve ez a legfontosabb váz. |
 | `claims` | 35 | ~9 200 | 1 | Munkafoglalás és koordináció. A feladatkiosztás és a „ki dolgozik mit” logika. |
 | `neural` | 82 | ~14 400 | 1 | Adaptív tanulás, minta-újrahasznosítás, MoE-routing. A Colony egyszerű routerét és Reasoning Bankját lehetne vele erősíteni. |
 | `memory` | 127 | ~17 800 | 7 | HNSW vektorkeresés, hibrid tár. A `FileVectorStore` lineáris keresését válthatná ki. A szolgáltatóra utaló részeket le kell vágni. |
@@ -37,19 +37,19 @@ Szempont: a Colony host-vezérelt, nincs benne modellszolgáltató, hálózati h
 | `embeddings` (35) | Van benne helyi (ONNX, Transformers.js), chunkolás és normalizálás, de OpenAI-adapter is. Csak a helyi rész jöhet szóba. |
 | `mcp` (265) | Önálló MCP-szerver. Opcionális adapter lehet a CLI fölé, ha a host MCP-t akar. |
 | `v3/crates` (28) | Rust federációs peer. Csak a federációval együtt. |
-| Pluginok, ha a fogalom kell: `ruflo-swarm`, `ruflo-adr`, `ruflo-goals`, `ruflo-protector`, `ruflo-observability`, `ruflo-security-audit`, `ruflo-federation`, `ruflo-workflows`, `ruflo-ddd`, `ruflo-knowledge-graph`, `ruflo-graph-intelligence`, `ruflo-arena`, `ruflo-daa` | Fogalmilag a Colonyhoz illenek (célok, ADR-ek, watchdog, megfigyelhetőség), de Claude Code-pluginként vannak megírva. Egyenként kell dönteni. |
-| Memóriaszubsztrát-pluginok: `ruflo-rag-memory`, `ruflo-agentdb`, `ruflo-rvf`, `ruflo-ruvector` | Külső eszközökre (`npx ruvector`) épülnek. Csak akkor, ha a helyi memória fejlesztéséhez kell. |
+| Pluginok, ha a fogalom kell: `colony-swarm`, `colony-adr`, `colony-goals`, `colony-protector`, `colony-observability`, `colony-security-audit`, `colony-federation`, `colony-workflows`, `colony-ddd`, `colony-knowledge-graph`, `colony-graph-intelligence`, `colony-arena`, `colony-daa` | Fogalmilag a Colonyhoz illenek (célok, ADR-ek, watchdog, megfigyelhetőség), de Claude Code-pluginként vannak megírva. Egyenként kell dönteni. |
+| Memóriaszubsztrát-pluginok: `colony-rag-memory`, `colony-agentdb`, `colony-rvf`, `colony-ruvector` | Külső eszközökre (`npx ruvector`) épülnek. Csak akkor, ha a helyi memória fejlesztéséhez kell. |
 
 ## C. Törlésre javasolt
 
 **Modellszolgáltatóhoz, LLM-hez vagy a hostgyártóhoz kötött csomagok:**
 `providers`, `codex`, `watermark`, `browser`, `integration`, `cli`, `cli-core`, `plugins` (a Provider-SDK), `deployment`, `testing`, `plugin-iot-cognitum`, `agents`.
 
-**Pluginok:** `ruflo-console` (786 fájl, Claude Code cockpit), `ruflo-mods`, `ruflo-core`, `ruflo-cost-tracker` (token- és modellköltség), `ruflo-deepseek-harness`, `ruflo-ruvllm`, `ruflo-chatgpt-federation`, `ruflo-ai-team`, `ruflo-intelligence`, `ruflo-loop-workers`, `ruflo-autopilot`, `ruflo-agent`, `ruflo-metaharness`, `ruflo-plugin-creator`, `ruflo-browser`, `ruflo-jujutsu`, `ruflo-migrations`, `ruflo-testgen`, `ruflo-docs`, `ruflo-sparc`.
+**Pluginok:** `colony-console` (786 fájl, Claude Code cockpit), `colony-mods`, `colony-core`, `colony-cost-tracker` (token- és modellköltség), `colony-deepseek-harness`, `colony-ruvllm`, `colony-chatgpt-federation`, `colony-ai-team`, `colony-intelligence`, `colony-loop-workers`, `colony-autopilot`, `colony-agent`, `colony-metaharness`, `colony-plugin-creator`, `colony-browser`, `colony-jujutsu`, `colony-migrations`, `colony-testgen`, `colony-docs`, `colony-sparc`.
 
-**Domain-specifikus vagy a Colonytól távoli pluginok:** `ruflo-music`, `ruflo-neural-trader`, `ruflo-market-data`, `ruflo-iot-cognitum`, `ruflo-rure`, `ruflo-ruos`, `ruflo-agntcy`, `ruflo-bbs-federation`, `ruflo-x-gateway`, `ruflo-business-pods`.
+**Domain-specifikus vagy a Colonytól távoli pluginok:** `colony-music`, `colony-neural-trader`, `colony-market-data`, `colony-iot-cognitum`, `colony-rure`, `colony-ruos`, `colony-agntcy`, `colony-bbs-federation`, `colony-x-gateway`, `colony-business-pods`.
 
-**Egyéb:** a Claude/Codex-konfiguráció (`.claude/`, `.agents/`, `.claude-plugin/`, `plugin/`, `chatgpt-plugin/`, a gyökér `CLAUDE.md` és `AGENTS.md`), a `ruflo/` csomag (529 forrásfájl, a Ruflo CLI burkolója), a `v3/goal_ui`, `v3/implementation` és a `v3/docs`.
+**Egyéb:** a Claude/Codex-konfiguráció (`.claude/`, `.agents/`, `.claude-plugin/`, `plugin/`, `chatgpt-plugin/`, a gyökér `CLAUDE.md` és `AGENTS.md`), a `colony/` csomag (529 forrásfájl, a Colony CLI burkolója), a `v3/goal_ui`, `v3/implementation` és a `v3/docs`.
 
 ## Átvételi napló
 
@@ -67,7 +67,7 @@ Amit **nem** vettem át:
 - **Eltérés a régi kódtól:** a régi Raft (`raft.ts`, `checkConsensus`) a kvórumot `floor(szavazók × küszöb)` képlettel számolta. A 0,66-os alapértelmezett tartalékküszöbbel ez 3 szavazónál 1, tehát egyetlen igen elég lett volna. (A konstruktor egy másik alapértelmezést is átadhat, azt nem néztem meg.) Az új `supermajority` szabály `ceil(2n / 3)`, ami 3 szavazónál 2.
 - **`queen-coordinator.ts` (1775 sor), `unified-coordinator.ts` (1822), `attention-coordinator.ts` (850), `worker-dispatch.ts` (1011), `federation-hub.ts` (863), `agent-pool.ts`, `message-bus.ts`, `domain/`, `application/`:** ezeket nem olvastam át. A nevük és méretük alapján nagyrészt a `ColonyHub`, a nyilvántartás és az eseménybusz funkcióit duplikálják. Átvétel előtt át kell nézni, van-e bennük olyan, ami a Colonyból hiányzik.
 
-A `legacy/ruflo/v3/@claude-flow/swarm` mappa ezért még nem törölhető.
+A `legacy/colony/v3/@colony/swarm` mappa ezért még nem törölhető.
 
 ### `claims` (részben átvéve)
 
@@ -87,7 +87,7 @@ Eltérések a régi kódtól, szándékosan:
 - **Nincs szövetséges (federated) tár, HLC és vektoridő** (`infrastructure/`): egyetlen főkönyv van.
 - **Nincs MCP- és CLI-réteg** (`api/`): a Colony saját CLI-je van.
 
-A `legacy/ruflo/v3/@claude-flow/claims` mappa ezért még nem törölhető.
+A `legacy/colony/v3/@colony/claims` mappa ezért még nem törölhető.
 
 ### `memory` (részben átvéve)
 
@@ -103,7 +103,7 @@ Amit **nem** vettem át: kvantálás, bináris szerializálás (a gráf a dokume
 
 A HNSW közelítő: a tesztben 1500 vektoron, 16 dimenzióban a találatok legalább 90%-a egyezik a pontos kereséssel. Ez egy mérés egy szintetikus adaton, nem garancia.
 
-A `legacy/ruflo/v3/@claude-flow/memory` mappa ezért még nem törölhető.
+A `legacy/colony/v3/@colony/memory` mappa ezért még nem törölhető.
 
 ### `guidance` (részben átvéve)
 
@@ -119,7 +119,7 @@ Fontos korlát: a régi csomag a „kapu" szót hookokra építette („a modell
 
 Amit **nem** vettem át, és még át kell nézni: `compiler` (szabályok fordítása), `retriever` (szabálykeresés feladat szerint; a Colony szándékosan minden szabályt a bootban tölt), `ledger`, `optimizer`, `evolution`, `trust`, `authority`, `capabilities`, `proof`, `conformance-kit`, `analyzer` (3260 sor), `ruvbot-integration`, `wasm-kernel`, `headless`.
 
-A `legacy/ruflo/v3/@claude-flow/guidance` mappa ezért még nem törölhető.
+A `legacy/colony/v3/@colony/guidance` mappa ezért még nem törölhető.
 
 ### `security` (részben átvéve)
 
@@ -133,7 +133,7 @@ Eltérés a régi kódtól: a régi `..` részszöveg-tiltás az `a..b` nevű f�
 
 Amit **nem** vettem át és még át kell nézni: `safe-executor`, `input-validator`, `token-generator`, `password-hasher`, `credential-generator`, `tool-output-guardrail`, `mcp-*`, `policy/*` (köztük `product-plane`, 1381 sor), `oauth/*`, `keychain-adapter`, `plugins/integrity-verifier`, `authorization/*`, `CVE-REMEDIATION`. Az OAuth, jelszó, token és kulcstár eleve nem illik a hálózat- és kulcsmentes maghoz.
 
-A `legacy/ruflo/v3/@claude-flow/security` mappa ezért még nem törölhető.
+A `legacy/colony/v3/@colony/security` mappa ezért még nem törölhető.
 
 ### `shared` (részben átvéve)
 
@@ -154,7 +154,7 @@ Korlátok, nyíltan:
 
 Amit **nem** vettem át: `projections`, `state-reconstructor` (események visszajátszása állapottá; a Colony állapota pillanatkép), `rvf-event-log`, az MCP-szerver és -átvitelek, a hookrendszer, a bővítmény-betöltő, a megszakító és sebességkorlátozó (`resilience/`, hálózatra), a konfigbetöltő.
 
-A `legacy/ruflo/v3/@claude-flow/shared` mappa ezért még nem törölhető.
+A `legacy/colony/v3/@colony/shared` mappa ezért még nem törölhető.
 
 ### `neural` (részben átvéve)
 
@@ -173,7 +173,7 @@ Ismert gyengeség, a teszt közben derült ki: a szabályok kulcsszavai sima ré
 
 Amit **nem** vettem át és még át kell nézni: a megerősítéses tanulás algoritmusai (`q-learning`, `sarsa`, `dqn`, `ppo`, `a2c`, `curiosity`, `decision-transformer`), a tanulási módok (`modes/`), `pattern-learner`, `sona-manager`, `sona-integration`, `flash-attention`, `reasoning-bank` és `reasoningbank-adapter` (a Colonynak van saját, kisebb Reasoning Bankja), `utils/rng` (egy seedelt véletlenszám-generátor, hasznos lehet, ha egyszer kell). Ezek nagy része modellképzéshez tartozik, amit a host-vezérelt mag nem végez.
 
-A `legacy/ruflo/v3/@claude-flow/neural` mappa ezért még nem törölhető.
+A `legacy/colony/v3/@colony/neural` mappa ezért még nem törölhető.
 
 ### `aidefence` (a fenyegetésfelismerés átvéve)
 
@@ -195,7 +195,7 @@ Korlátok: reguláris kifejezések listája. Átfogalmazott, lefordított vagy k
 
 Amit **nem** vettem át: `threat-learning-service` (az AgentDB-ben tanuló része), a viselkedéselemzés és a szabályellenőrzés típusai (`BehavioralAnalysisResult`, `PolicyVerificationResult`; a hozzájuk tartozó kód nincs a csomagban).
 
-A `legacy/ruflo/v3/@claude-flow/aidefence` mappa ezért még nem törölhető (a tanuló szolgáltatás miatt).
+A `legacy/colony/v3/@colony/aidefence` mappa ezért még nem törölhető (a tanuló szolgáltatás miatt).
 
 ### `plugin-agent-federation` (csak a személyesadat-szűrő átvéve)
 
@@ -212,11 +212,11 @@ Eltérések a régi kódtól:
 
 Amit **nem** vettem át: a `trust-evaluator` (társak megbízhatósági pontszáma, csak föderációban van értelme), a költségkeret és a költségjelentés (modellköltséghez), az A2A-ügynökkártya, a WireGuard-szolgáltatások, a kapcsolat-megszakító, a bejövő küldő, az MCP-eszközök.
 
-**Javaslat:** a `legacy/ruflo/v3/@claude-flow/plugin-agent-federation` és a hozzá tartozó `legacy/ruflo/v3/crates` (Rust föderációs társ) törölhető, mert nincs bennük átveendő. Ha a jövőben két Colony között megosztás kell, az git-alapú csomagcsere lenne (hash-ellenőrzött export és import), nem ez a hálózati kód. A törlés a te döntésed.
+**Javaslat:** a `legacy/colony/v3/@colony/plugin-agent-federation` és a hozzá tartozó `legacy/colony/v3/crates` (Rust föderációs társ) törölhető, mert nincs bennük átveendő. Ha a jövőben két Colony között megosztás kell, az git-alapú csomagcsere lenne (hash-ellenőrzött export és import), nem ez a hálózati kód. A törlés a te döntésed.
 
 ## Teendők, ha elfogadod
 
 1. A **C** lista törlése egy külön commitban (a git-előzményben megmarad).
-2. Az **A** lista csomagjainak átvétele egyenként, kolónia-szóhasználattal, szolgáltatóra utaló részek nélkül, tesztekkel. Javasolt sorrend: `swarm` → `claims` → `memory` → `guidance` → `security`.
+2. Az **A** lista csomagjainak átvétele egyenként, Colony-szóhasználattal, szolgáltatóra utaló részek nélkül, tesztekkel. Javasolt sorrend: `swarm` → `claims` → `memory` → `guidance` → `security`.
 3. A **B** lista elemeiről egyenként döntés, amikor a szükségletük felmerül.
-4. A `legacy/ruflo` az átvétel végére kiürül vagy törölhető.
+4. A `legacy/colony` az átvétel végére kiürül vagy törölhető.

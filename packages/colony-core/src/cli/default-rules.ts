@@ -2,7 +2,7 @@
 export const DEFAULT_RULES: Record<string, string> = {
   '00-protocol.md': `# Munkaprotokoll
 
-- A host a modell. A kolónia csak főkönyv, útvonalválasztás, szavazás és memória.
+- A host a modell. A Colony csak főkönyv, útvonalválasztás, szavazás és memória.
 - Munkát csak a \`next\` parancson át veszel fel, és csak a neked kiosztott feladaton dolgozol.
 - A munka végén \`done\` (eredménnyel) vagy \`fail\` (hibaszöveggel) kötelező. Félbehagyott feladatot ne hagyj \`in_progress\` állapotban.
 - Boot nélkül nincs munka. Ha a boot után a szabályfájlok vagy a git-revízió változtak, bootolj újra.

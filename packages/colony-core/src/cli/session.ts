@@ -166,7 +166,7 @@ export class ColonySession {
   public static async open(dir: string): Promise<ColonySession> {
     const stateDir = path.join(dir, STATE_DIR);
     const codex = new VectorCodex({ vectorStore: new FileVectorStore({ storagePath: path.join(stateDir, MEMORY_FILE) }) });
-    const hub = new ColonyHub({ name: 'KristalColony', codex });
+    const hub = new ColonyHub({ name: 'Colony', codex });
 
     const ledgerText = await readIfExists(path.join(stateDir, LEDGER_FILE));
     if (ledgerText !== null) {

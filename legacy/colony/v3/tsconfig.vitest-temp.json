@@ -1,0 +1,104 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": [
+      "ES2022"
+    ],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": false,
+    "composite": true,
+    "incremental": true,
+    "baseUrl": "./",
+    "paths": {
+      "@colony/security": [
+        "./@colony/security/src"
+      ],
+      "@colony/memory": [
+        "./@colony/memory/src"
+      ],
+      "@colony/integration": [
+        "./@colony/integration/src"
+      ],
+      "@colony/swarm": [
+        "./@colony/swarm/src"
+      ],
+      "@colony/performance": [
+        "./@colony/performance/src"
+      ],
+      "@colony/cli": [
+        "./@colony/cli/src"
+      ],
+      "@colony/neural": [
+        "./@colony/neural/src"
+      ],
+      "@colony/testing": [
+        "./@colony/testing/src"
+      ],
+      "@colony/deployment": [
+        "./@colony/deployment/src"
+      ],
+      "@colony/shared": [
+        "./@colony/shared/src"
+      ],
+      "@colony/hooks": [
+        "./@colony/hooks/src"
+      ]
+    },
+    "emitDeclarationOnly": false,
+    "tsBuildInfoFile": "/workspaces/colony/v3/node_modules/.pnpm/vitest@1.6.1_@types+node@20.19.27/node_modules/vitest/dist/vendor/tsconfig.tmp.tsbuildinfo"
+  },
+  "references": [
+    {
+      "path": "./@colony/shared"
+    },
+    {
+      "path": "./@colony/security"
+    },
+    {
+      "path": "./@colony/memory"
+    },
+    {
+      "path": "./@colony/integration"
+    },
+    {
+      "path": "./@colony/swarm"
+    },
+    {
+      "path": "./@colony/performance"
+    },
+    {
+      "path": "./@colony/cli"
+    },
+    {
+      "path": "./@colony/neural"
+    },
+    {
+      "path": "./@colony/testing"
+    },
+    {
+      "path": "./@colony/deployment"
+    },
+    {
+      "path": "./@colony/hooks"
+    }
+  ],
+  "include": [],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
