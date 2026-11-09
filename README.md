@@ -63,7 +63,7 @@ node dist/cli.js synthesize <parentTaskId>                   # lezárt részfela
 |---|---|
 | `boot` | Opcionális: ellenőrzi és kiírja az állapot és a szabályok diagnosztikáját. Munkakezdéshez nem szükséges. |
 | `status` | Tagok, feladatok, nyitott javaslatok. |
-| `task add <cím> <leírás>` | Új feladat (`--role`, `--capabilities`, `--after id,id`, `--priority`, `--consensus <kvórum>`). Szerep nélkül a MoE-router választ. |
+| `task add <cím> <leírás>` | Új feladat (`--role`, `--capabilities`, `--after id,id`, `--priority`, `--consensus <kvórum>`). Szerep nélkül a kulcsszó-alapú router választ. |
 | `next --as <szerep\|tag>` | A szerepnek kiosztott következő feladat, a szerep utasításával és a releváns memóriával. |
 | `done <id> --result <szöveg> [--quality 0..1] [--verified-by-test]` | Lezárja a feladatot. Konszenzusos feladatnál előbb jóváhagyott javaslat kell. A kolónia megjegyzi a megoldást. A `--quality` és a `--verified-by-test` a **host állítása**: a kolónia tanul belőle (router, tagstatisztika, kiosztás), de nem méri és nem ellenőrzi. A jutalom sikernél `0,2 + 0,8 × minőség`, megadás nélkül 0,5. |
 | `fail <id> --error <szöveg> [--quality 0..1]` | Hibásnak jelöli a feladatot. A jutalom mindig negatív: `-(1 - 0,3 × minőség)`, megadás nélkül -1. |
@@ -86,7 +86,7 @@ node dist/cli.js synthesize <parentTaskId>                   # lezárt részfela
 | `check` | Kapuk, **mielőtt** a host cselekszik: `--command` (romboló parancs, titok), `--text`, `--file` (titokkeresés, `--diff-lines`, `--threshold`), `--tool` + `--allow` (eszköz-engedélylista). Döntés: `allow`, `warn`, `require-confirmation`, `block` (kilépési kód 3). A talált titkot soha nem írja ki. |
 | `redact --text\|--file` | Mielőtt valami elhagyja a projektet (jelentés, kommentár): e-mail, bankkártya (Luhn), IBAN (mod 97), nemzetközi telefonszám, IP, JWT, adatbázis-URL és titkok cseréje helyőrzőre. `--hash kind,kind --salt S` sózott hash a helyőrző helyett (titokra soha). A nevet és a postai címet **nem** ismeri fel, olvasd át az eredményt. |
 | `scan --text\|--file` | Prompt-injection megfogalmazás, rejtett karakterek (nulla szélességű, kétirányú vezérlők, Unicode címkék) és személyes adat keresése. Verdikt: `clean`, `suspicious`, `hostile` (kilépési kód 3). A személyes adatot fajta és darabszám szerint adja vissza, az értéket soha. A `memory add` a `hostile` szöveget elutasítja (`--allow-risky` felülírja), mert a memória később kontextusként kerül a host elé. |
-| `route test\|teach\|stats` | A MoE-router: `test <szöveg>` megmutatja, melyik szerepet választaná (nincs mellékhatás), `teach <szöveg> --role R [--reward -1..1]` tanítja, `stats` a szerepek terhelését (Gini) és a tanultakat. A router a `done` (+0,5, mert csak jelentett) és a `fail` (-1) kimenetből is tanul. |
+| `route test\|teach\|stats` | A kulcsszó-alapú router: `test <szöveg>` megmutatja, melyik szerepet választaná (nincs mellékhatás), `teach <szöveg> --role R [--reward -1..1]` tanítja, `stats` a szerepek terhelését (Gini) és a tanultakat. A router a `done` (+0,5, mert csak jelentett) és a `fail` (-1) kimenetből is tanul. |
 | `audit list\|verify` | A `.colony/audit.jsonl` hash-láncolt napló: ki mit tett (feladat, foglalás, szavazat, kapu-döntés). A `verify` a láncot és azt ellenőrzi, hogy a napló még tartalmazza az utolsó bootkor rögzített bejegyzést. |
 | `vote <javaslat> --as <tag> --approve\|--reject --reason <szöveg>` | Szavaz (`--confidence 0..1`). Indoklás kötelező. |
 | `memory add\|search` | Kézi memóriaírás és -keresés (`--ns`, `--k`). |
@@ -126,7 +126,7 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 
 ## Ismert hiányok
 
-- A `colony-core` tesztjei (`pnpm test`, 248 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
+- A `colony-core` tesztjei (`pnpm test`) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a kulcsszó-alapú router és a Reasoning Bank külön tesztelése még hiányzik.
 - A szabályok csak kötelező készletből állnak, és mind a bootban töltődnek be. Feladathoz kötött szabálybetöltésre (útválasztóra) szándékosan nincs szükség.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
 - A `member preset standard` pótolja a hiányzó beépített szerepeket. Az ideiglenes, explicit lejáratú tagok P9 része a `member add` és `member sweep` paranccsal; az opcionális `legacy-15` sablon még hátravan.
