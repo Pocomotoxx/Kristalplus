@@ -65,11 +65,11 @@ interface Pattern {
 }
 
 const PATTERNS: Pattern[] = [
-  { regex: /hagy(?:d|j[aá]tok)\\s+figyelmen\\s+k[ií]v[uü]l\\s+(?:az\\s+)?(?:összes\\s+)?(?:korábbi|el[oő]z[oő])\\s+utas[ií]t[aá]s(?:t|okat)?/i, type: 'instruction_override', severity: 'critical', description: 'Magyar kísérlet a korábbi utasítások felülírására', confidence: 0.97 },
-  { regex: /figyelmen\\s+k[ií]v[uü]l\\s+(?:az\\s+)?(?:összes\\s+)?(?:korábbi|el[oő]z[oő])\\s+utas[ií]t[aá]s(?:t|okat)?/i, type: 'instruction_override', severity: 'critical', description: 'Magyar kísérlet a korábbi utasítások felülírására', confidence: 0.95 },
-  { regex: /nincs\\s+(?:semmilyen|b[aá]rmilyen)\\s+korl[aá]toz[aá]s(?:od|a|otok)?/i, type: 'jailbreak', severity: 'critical', description: 'Magyar korlátozás nélküli működésre utasítás', confidence: 0.94 },
-  { regex: /viselkedj\\s+[uú]gy,?\\s+mintha.{0,80}(?:fejleszt[oő]i|developer)\\s+m[oó]dban\\s+lenn[eé]l/i, type: 'role_switching', severity: 'high', description: 'Magyar szerep- vagy fejlesztői mód váltási kísérlet', confidence: 0.92 },
-  { regex: /fedd\\s+fel.{0,80}(?:rendszer(?:üzenet|utas[ií]t[aá]s)|system\\s+prompt)/i, type: 'context_manipulation', severity: 'critical', description: 'Magyar kísérlet a rendszerüzenet feltárására', confidence: 0.96 },
+  { regex: /hagy(?:d|j[aá]tok)\s+figyelmen\s+k[ií]v[uü]l\s+(?:az\s+)?(?:összes\s+)?(?:korábbi|el[oő]z[oő])\s+utas[ií]t[aá]s(?:t|okat)?/i, type: 'instruction_override', severity: 'critical', description: 'Magyar kísérlet a korábbi utasítások felülírására', confidence: 0.97 },
+  { regex: /figyelmen\s+k[ií]v[uü]l\s+(?:az\s+)?(?:összes\s+)?(?:korábbi|el[oő]z[oő])\s+utas[ií]t[aá]s(?:t|okat)?/i, type: 'instruction_override', severity: 'critical', description: 'Magyar kísérlet a korábbi utasítások felülírására', confidence: 0.95 },
+  { regex: /nincs\s+(?:semmilyen|b[aá]rmilyen)\s+korl[aá]toz[aá]s(?:od|a|otok)?/i, type: 'jailbreak', severity: 'critical', description: 'Magyar korlátozás nélküli működésre utasítás', confidence: 0.94 },
+  { regex: /viselkedj\s+[uú]gy,?\s+mintha.{0,80}(?:fejleszt[oő]i|developer)\s+m[oó]dban\s+lenn[eé]l/i, type: 'role_switching', severity: 'high', description: 'Magyar szerep- vagy fejlesztői mód váltási kísérlet', confidence: 0.92 },
+  { regex: /fedd\s+fel.{0,80}(?:rendszer(?:üzenet|utas[ií]t[aá]s)|system\s+prompt)/i, type: 'context_manipulation', severity: 'critical', description: 'Magyar kísérlet a rendszerüzenet feltárására', confidence: 0.96 },
   { regex: /ignore\s+(?:all\s+)?(?:previous\s+)?instructions/i, type: 'instruction_override', severity: 'critical', description: 'Attempt to override instructions', confidence: 0.95 },
   { regex: /forget\s+(?:everything|all|previous)/i, type: 'instruction_override', severity: 'critical', description: 'Attempt to reset context', confidence: 0.92 },
   { regex: /disregard\s+(?:all\s+)?(?:previous|prior|above)/i, type: 'instruction_override', severity: 'critical', description: 'Attempt to disregard instructions', confidence: 0.93 },
