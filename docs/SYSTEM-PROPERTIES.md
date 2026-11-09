@@ -63,7 +63,7 @@ A **Concerned Challenger** külön profil: alapmódja a veszekedés, alternatív
 
 A javaslatok auditálható folyamata: **álláspontok → válaszok → végleges javaslat → szavazás**. A javaslat létrehozásakor rögzül a választói kör, a tagok szerepe és profilazonosítója, valamint súlyozott szavazás esetén a súlyuk. A lezáráshoz legalább egy álláspont és egy másik tag válasza szükséges. A javaslatot a létrehozó véglegesíti, a szavazás ezután nyílik meg. A napló hash-láncoltan rögzíti a vitabejegyzéseket és a végleges szöveget.
 
-Támogatott kvórumstratégiák: többség, minősített többség, bizánci (3f+1), egyhangúság és súlyozott döntés. Az Exobiologist nem szavazhat; az újonnan érkező vagy a rögzített körön kívüli tag sem. Mother tanácsadóként nem része a vitának vagy a választói körnek, és nem szavaz.
+Támogatott kvórumstratégiák: többség, minősített többség, bizánci (3f+1), egyhangúság és súlyozott döntés. Byzantine szavazáskor a szavazat opcionális `executionContextId` mezője alapján az azonos végrehajtási kontextusból érkező voksok legfeljebb egy jóváhagyásnak számítanak; a hiányzó azonosítók közös, nem igazolt forrásnak számítanak. A `getProposal` és `snapshot` `independenceProof` összesítést ad a szavazók számáról, a különböző bejelentett kontextusokról és az `identityConfidence` értékéről. Ez a host állítása, nem kriptográfiai bizonyíték: a core nem tudja igazolni, hogy a host nem hamisított különböző azonosítókat. Az Exobiologist nem szavazhat; az újonnan érkező vagy a rögzített körön kívüli tag sem. Mother tanácsadóként nem része a vitának vagy a választói körnek, és nem szavaz.
 
 ## Mother: belső, virtuális tanácsadó
 
