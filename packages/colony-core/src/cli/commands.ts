@@ -77,7 +77,7 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous|weighted] [--timeout-min M] [--data text]
   debate <proposalId> position|reply --as <member> --text <text> [--mode rational|fact-finding|courtroom|negotiation|quarrel] [--to <positionId>]
   debate <proposalId> finalize --as <proposerId> --text <final proposal>  (only the concerned challenger profile may select quarrel)
-  vote <proposalId> --as <frozenMemberId> (--approve|--reject) --reason <text> [--confidence 0..1]
+  vote <proposalId> --as <frozenMemberId> (--approve|--reject) --reason <text> [--confidence 0..1] [--execution-context ID]
                                           Mother appears as a forum advisor; she never enters the discussion or electorate.
   topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
   check                                   run gates BEFORE acting: [--command TEXT] [--text TEXT] [--file PATH [--diff-lines N] [--threshold N]]
@@ -205,6 +205,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         error: { type: 'string' },
         reason: { type: 'string' },
         confidence: { type: 'string' },
+        'execution-context': { type: 'string' },
         progress: { type: 'string' },
         command: { type: 'string' },
         text: { type: 'string' },
@@ -1137,9 +1138,9 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       if (!sub) throw new CliError('usage: vote <proposalId> --as <member> ...');
       const voter = resolveSingleMember(session, values.as);
       const reason = redactText(values.reason).text.slice(0, 500);
-      const proposal = await hub.consensus.castVote(sub, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason });
+      const proposal = await hub.consensus.castVote(sub, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason, executionContextId: values['execution-context'] });
       const recordedVote = proposal.votes.get(voter.id);
-      log('proposal.vote', proposal.id, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason, weight: recordedVote?.weight ?? null, status: proposal.status });
+      log('proposal.vote', proposal.id, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason, executionContextId: recordedVote?.executionContextId ?? null, independenceProof: proposal.independenceProof, weight: recordedVote?.weight ?? null, status: proposal.status });
       await session.save();
       return reply({ proposal: serializeProposal(proposal), voteWeight: recordedVote?.weight ?? null, ...(proposal.strategy === 'weighted' ? { note: 'Weight was captured at proposal creation from ledger-derived performance × health. It is heuristic and reflects outcomes reported by the host.' } : {}) });
     }
