@@ -25,6 +25,11 @@ export type AgentRole =
 export const ADVISORY_ROLES: readonly AgentRole[] = ['auditor', 'exobiologist'];
 
 export type ColonySpecialization = 'release-operations' | `domain:${string}`;
+export type DebateMode = 'rational' | 'fact-finding' | 'courtroom' | 'negotiation' | 'quarrel';
+export interface DebateModePair {
+  default: DebateMode;
+  alternate: DebateMode;
+}
 
 export type AgentStatus = 'idle' | 'busy' | 'voting' | 'offline' | 'error';
 
@@ -121,6 +126,7 @@ export type DiscussionEntryKind = 'position' | 'reply';
 export interface ProposalDiscussionEntry {
   id: string;
   kind: DiscussionEntryKind;
+  mode: DebateMode;
   authorId: string;
   replyTo?: string;
   text: string;
@@ -141,6 +147,9 @@ export interface ConsensusProposal<T = unknown> {
   strategy?: string;
   /** New proposals freeze this electorate at creation; absent only on pre-migration ledger records. */
   eligibleVoterIds?: readonly string[];
+  /** Voter identities are frozen with the electorate so only the designated profile can use quarrel mode. */
+  eligibleVoterRoles?: Readonly<Record<string, AgentRole>>;
+  eligibleVoterProfileIds?: Readonly<Record<string, string | null>>;
   /** New proposals begin in discussion; legacy open proposals restore directly to voting. */
   phase?: ProposalPhase;
   discussion?: ProposalDiscussionEntry[];

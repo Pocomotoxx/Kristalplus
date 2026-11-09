@@ -1,7 +1,8 @@
-import type { ConsensusProposal, ConsensusVote, DiscussionEntryKind, ProposalDiscussionEntry } from '../types.js';
+import type { AgentRole, ConsensusProposal, ConsensusVote, DebateMode, DiscussionEntryKind, ProposalDiscussionEntry } from '../types.js';
 import type { MessageBus } from '../message-bus.js';
 import { canStillReach, requiredApprovals } from './strategies.js';
 import type { QuorumStrategy } from './strategies.js';
+import { canUseDebateMode, DEBATE_MODES_BY_ROLE } from '../debate/debate-modes.js';
 
 export interface ProposalOptions<T = unknown> {
   taskId: string;
@@ -13,6 +14,8 @@ export interface ProposalOptions<T = unknown> {
   strategy?: QuorumStrategy;
   /** Exact, frozen electorate. Required for every new proposal and every voting strategy. */
   eligibleVoterIds: readonly string[];
+  eligibleVoterRoles: Record<string, AgentRole>;
+  eligibleVoterProfileIds: Record<string, string | null>;
   /** Optional cross-check for callers migrating from count-based proposal creation. */
   voters?: number;
   voterWeights?: Record<string, number>;
@@ -49,6 +52,18 @@ export class ConsensusEngine {
       throw new Error('a proposal needs at least two unique eligible voter IDs');
     }
     const voters = eligibleVoterIds.length;
+    const rosterMatches = (value: Record<string, unknown> | undefined) =>
+      Boolean(value) && Object.keys(value!).length === voters && eligibleVoterIds.every((memberId) => Object.prototype.hasOwnProperty.call(value!, memberId));
+    if (!rosterMatches(options.eligibleVoterRoles) || !rosterMatches(options.eligibleVoterProfileIds)) {
+      throw new Error('frozen voter roles and profile IDs must match the electorate');
+    }
+    const knownRoles = new Set(Object.keys(DEBATE_MODES_BY_ROLE));
+    if (eligibleVoterIds.some((memberId) => !knownRoles.has(options.eligibleVoterRoles[memberId]))) {
+      throw new Error('frozen electorate contains an unknown agent role');
+    }
+    if (Object.values(options.eligibleVoterProfileIds).some((profileId) => profileId !== null && typeof profileId !== 'string')) {
+      throw new Error('frozen profile IDs must be strings or null');
+    }
     if (options.voters !== undefined && options.voters !== voters) throw new Error('voter count must match the frozen electorate');
     if (options.strategy === 'weighted') {
       if (!options.voterWeights || Object.keys(options.voterWeights).length !== voters
@@ -76,6 +91,8 @@ export class ConsensusEngine {
       ...(options.strategy ? { strategy: options.strategy } : {}),
       voters,
       eligibleVoterIds: Object.freeze(eligibleVoterIds),
+      eligibleVoterRoles: Object.freeze({ ...options.eligibleVoterRoles }),
+      eligibleVoterProfileIds: Object.freeze({ ...options.eligibleVoterProfileIds }),
       phase: 'discussion',
       discussion: [],
       ...(options.strategy === 'weighted' ? { voterWeights: Object.freeze({ ...options.voterWeights }) } : {}),
@@ -99,7 +116,7 @@ export class ConsensusEngine {
   /** Add an auditable position or a direct response to an earlier position. */
   public addDiscussionEntry(
     proposalId: string,
-    entry: { authorId: string; kind: DiscussionEntryKind; text: string; replyTo?: string },
+    entry: { authorId: string; kind: DiscussionEntryKind; mode: DebateMode; text: string; replyTo?: string },
   ): ProposalDiscussionEntry {
     const proposal = this.proposals.get(proposalId);
     if (!proposal) throw new Error(`Proposal '${proposalId}' not found`);
@@ -110,6 +127,11 @@ export class ConsensusEngine {
       throw new Error(`Member '${entry.authorId}' is not in the frozen electorate`);
     }
     if (entry.kind !== 'position' && entry.kind !== 'reply') throw new Error('discussion entry kind must be position or reply');
+    const role = proposal.eligibleVoterRoles?.[entry.authorId];
+    const profileId = proposal.eligibleVoterProfileIds?.[entry.authorId] ?? null;
+    if (!role || !canUseDebateMode(role, profileId, entry.mode)) {
+      throw new Error(`Debate mode '${entry.mode}' is not available to member '${entry.authorId}'`);
+    }
     const text = entry.text.trim();
     if (!text || text.length > 4000) throw new Error('discussion text must be 1–4000 characters');
     if (proposal.discussion!.length >= 60) throw new Error('discussion is limited to 60 entries');
@@ -129,6 +151,7 @@ export class ConsensusEngine {
     const record: ProposalDiscussionEntry = {
       id: `entry_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       kind: entry.kind,
+      mode: entry.mode,
       authorId: entry.authorId,
       ...(entry.replyTo ? { replyTo: entry.replyTo } : {}),
       text,
@@ -272,6 +295,8 @@ export class ConsensusEngine {
         ...structuredClone(rest),
         phase: rest.phase ?? 'voting',
         eligibleVoterIds: rest.eligibleVoterIds ? Object.freeze([...rest.eligibleVoterIds]) : undefined,
+        eligibleVoterRoles: rest.eligibleVoterRoles ? Object.freeze({ ...rest.eligibleVoterRoles }) : undefined,
+        eligibleVoterProfileIds: rest.eligibleVoterProfileIds ? Object.freeze({ ...rest.eligibleVoterProfileIds }) : undefined,
         voterWeights: rest.voterWeights ? Object.freeze({ ...rest.voterWeights }) : undefined,
         discussion: rest.discussion ?? [],
         votes: voteMap,

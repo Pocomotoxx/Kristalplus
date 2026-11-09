@@ -27,7 +27,7 @@ test('commands run without boot and initialize built-in members on first use', a
   const run = await project('noboot');
   const r = await run('status');
   assert.equal(r.code, 0);
-  assert.equal(r.out.colony.totalMembers, 11);
+  assert.equal(r.out.colony.totalMembers, 12);
   const added = await run('task', 'add', 'No boot needed', 'work starts directly', '--role', 'engineer');
   assert.equal(added.code, 0);
 });
@@ -66,11 +66,11 @@ test('boot seeds the built-in members once and reports UNVERIFIABLE outside git'
   assert.equal(first.code, 0);
   assert.equal(first.out.boot.status, 'UNVERIFIABLE');
   assert.equal(first.out.boot.revision, 'unknown');
-  assert.equal(first.out.colony.totalMembers, 11);
+  assert.equal(first.out.colony.totalMembers, 12);
   assert.ok(first.out.protocol.length > 0);
 
   const second = await run('boot');
-  assert.equal(second.out.colony.totalMembers, 11);
+  assert.equal(second.out.colony.totalMembers, 12);
   assert.ok(second.out.boot.evidence.some((e: any) => e.path === '.colony/ledger.json' && /^[0-9a-f]{64}$/.test(e.sha256)));
 });
 
@@ -186,8 +186,15 @@ test('a consensus task cannot be completed before its proposal is approved', asy
   assert.match(beforeDebateVote.out.error, /discussion is not finalized/);
   const position = await run('debate', proposal.id, 'position', '--as', 'reviewer', '--text', 'Keep the release behind the test gate');
   assert.equal(position.code, 0);
-  const reply = await run('debate', proposal.id, 'reply', '--as', 'tester', '--to', position.out.entry.id, '--text', 'The integration suite is still missing');
+  const reply = await run('debate', proposal.id, 'reply', '--as', 'tester', '--to', position.out.entry.id, '--mode', 'courtroom', '--text', 'The integration suite is still missing');
   assert.equal(reply.code, 0);
+  assert.equal(reply.out.entry.mode, 'courtroom');
+  const challenger = (await run('member', 'list')).out.members.find((member: any) => member.profileId === 'profile_concerned_challenger');
+  assert.deepEqual(challenger.debateModes, { default: 'quarrel', alternate: 'courtroom' });
+  const ordinaryQuarrel = await run('debate', proposal.id, 'position', '--as', 'engineer', '--mode', 'quarrel', '--text', 'I want to quarrel');
+  assert.match(ordinaryQuarrel.out.error, /may use only its default/);
+  const challenge = await run('debate', proposal.id, 'position', '--as', challenger.id, '--mode', 'quarrel', '--text', 'This leaves an unhandled rollback risk');
+  assert.equal(challenge.out.entry.mode, 'quarrel');
   const final = await run('debate', proposal.id, 'finalize', '--as', 'engineer', '--text', 'Release only after integration tests pass');
   assert.equal(final.out.proposal.phase, 'voting');
 
@@ -220,17 +227,18 @@ test('propose --strategy derives the quorum from the active members and validate
   assert.match((await run('propose', id, 't', '--as', 'engineer', '--strategy', 'majority', '--quorum', '2')).out.error, /not both/);
 
   const byz = await run('propose', id, 'ship it?', '--as', 'engineer', '--strategy', 'byzantine');
-  assert.equal(byz.out.proposal.voters, 10); // eleven members, the exobiologist does not vote
-  assert.equal(byz.out.proposal.quorum, 7); // f = 3 for ten voters, quorum floor(13 / 2) + 1
+  assert.equal(byz.out.proposal.voters, 11); // twelve built-in agents; the exobiologist does not vote
+  assert.equal(byz.out.proposal.quorum, 8); // f = 3 for eleven voters, quorum floor(14 / 2) + 1
 
   const maj = (await run('propose', id, 'again?', '--as', 'engineer', '--strategy', 'majority')).out.proposal;
   assert.equal(maj.quorum, 6);
   const majPosition = await run('debate', maj.id, 'position', '--as', 'reviewer', '--text', 'Support based on current checks');
   await run('debate', maj.id, 'reply', '--as', 'tester', '--to', majPosition.out.entry.id, '--text', 'The tested path is covered');
   await run('debate', maj.id, 'finalize', '--as', 'engineer', '--text', 'Approve after current checks');
-  for (const who of ['reviewer', 'tester', 'security', 'architect', 'auditor']) {
+  for (const who of ['reviewer', 'tester', 'security', 'architect']) {
     await run('vote', maj.id, '--as', who, '--approve', '--reason', 'checked');
   }
+  await run('vote', maj.id, '--as', 'member_auditor', '--approve', '--reason', 'checked');
   const last = await run('vote', maj.id, '--as', 'analyst', '--approve', '--reason', 'numbers hold');
   assert.equal(last.out.proposal.status, 'approved');
   assert.equal((await run('done', id, '--result', 'shipped')).code, 0);

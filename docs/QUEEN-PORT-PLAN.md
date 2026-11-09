@@ -221,3 +221,18 @@ Ajánlott menet innen: P7 (súlyozott szavazás és Chief override) → P9 (idei
 ## Nyitott pont
 
 - A 10 szerepre való összevonás (Scraper + Cleansing + Deep Research egy `researcher`; Synthesis a Chief-nél; a Budget kimarad) az én javaslatom a terv alapján. Ha külön szerepként kell valamelyik, a P1-et érinti.
+
+
+## Vitafajták és az aggodalmaskodó kritikus
+
+Minden agentprofil két, előre rögzített vitafajtát kap: egy alapértelmezettet és egy alternatívát. A `debate` parancs alapból az agent alapértelmezett formáját használja; a `--mode` kapcsolóval az alternatív választható. A kolónia ezt a profilonkénti engedélylistát futásidőben is ellenőrzi.
+
+| Vitamód | Mire való |
+|---|---|
+| `rational` | Bizonyítékok és kritikus érvek mérlegelése |
+| `fact-finding` | Tényállítások és bizonyítékok ellenőrzése |
+| `courtroom` | Álláspontok rendezett bemutatása és keresztkérdések |
+| `negotiation` | Elfogadható kompromisszum kidolgozása |
+| `quarrel` | Heves, adverszárius állítás- és kockázatpróba |
+
+Az egyetlen „Aggodalmaskodó kritikus” profil magas hőfokkal (`temperature: 1.0`) és `topP: 0.99` mintavételezési javaslattal működik. Alapmódja a `quarrel`, alternatívája a `courtroom`. A heves mód az állításokat, kockázati láncokat és bizonyítékhiányokat támadja; személyeskedés, fenyegetés és megfélemlítés nem része a módszernek. A többi agent profilja nem választhatja ezt a módot.

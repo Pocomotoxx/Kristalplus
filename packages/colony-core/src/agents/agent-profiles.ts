@@ -1,4 +1,5 @@
-import { AgentRole } from '../types.js';
+import type { AgentRole, DebateModePair } from '../types.js';
+import { CONCERNED_CHALLENGER_DEBATE_MODES, CONCERNED_CHALLENGER_PROFILE_ID, DEBATE_MODES_BY_ROLE } from '../debate/debate-modes.js';
 
 export interface ColonyAgentProfile {
   id: string;
@@ -14,6 +15,7 @@ export interface ColonyAgentProfile {
    * can neither set these values nor check that the host followed them.
    */
   sampling?: { temperature: number; topP: number };
+  debateModes: DebateModePair;
 }
 
 /**
@@ -30,6 +32,7 @@ export const BUILTIN_AGENT_PROFILES: Record<string, ColonyAgentProfile> = {
     capabilities: ['goal-planning', 'task-decomposition', 'agent-delegation', 'colony-supervision'],
     maxConcurrentTasks: 5,
     priority: 'critical',
+    debateModes: DEBATE_MODES_BY_ROLE.director,
   },
   architect: {
     id: 'profile_architect',
@@ -40,6 +43,7 @@ export const BUILTIN_AGENT_PROFILES: Record<string, ColonyAgentProfile> = {
     capabilities: ['system-design', 'interface-spec', 'ddd-modeling', 'modularity-audit'],
     maxConcurrentTasks: 2,
     priority: 'high',
+    debateModes: DEBATE_MODES_BY_ROLE.architect,
   },
   coder: {
     id: 'profile_coder',
@@ -50,6 +54,7 @@ export const BUILTIN_AGENT_PROFILES: Record<string, ColonyAgentProfile> = {
     capabilities: ['code-generation', 'refactoring', 'optimization', 'api-design', 'debugging'],
     maxConcurrentTasks: 2,
     priority: 'high',
+    debateModes: DEBATE_MODES_BY_ROLE.engineer,
   },
   reviewer: {
     id: 'profile_reviewer',
@@ -60,6 +65,7 @@ export const BUILTIN_AGENT_PROFILES: Record<string, ColonyAgentProfile> = {
     capabilities: ['code-review', 'quality-check', 'consensus-voting', 'regression-detection'],
     maxConcurrentTasks: 3,
     priority: 'normal',
+    debateModes: DEBATE_MODES_BY_ROLE.reviewer,
   },
   tester: {
     id: 'profile_tester',
@@ -70,6 +76,7 @@ export const BUILTIN_AGENT_PROFILES: Record<string, ColonyAgentProfile> = {
     capabilities: ['unit-testing', 'e2e-testing', 'benchmark-analysis', 'assertion-verification'],
     maxConcurrentTasks: 3,
     priority: 'normal',
+    debateModes: DEBATE_MODES_BY_ROLE.tester,
   },
   security: {
     id: 'profile_security',
@@ -80,6 +87,7 @@ export const BUILTIN_AGENT_PROFILES: Record<string, ColonyAgentProfile> = {
     capabilities: ['security-audit', 'cve-scanning', 'permission-enforcement', 'input-sanitization'],
     maxConcurrentTasks: 2,
     priority: 'critical',
+    debateModes: DEBATE_MODES_BY_ROLE.security,
   },
   auditor: {
     id: 'profile_auditor',
@@ -90,6 +98,7 @@ export const BUILTIN_AGENT_PROFILES: Record<string, ColonyAgentProfile> = {
     capabilities: ['executive-audit', 'goal-drift-detection', 'loop-detection', 'hold-escalation'],
     maxConcurrentTasks: 3,
     priority: 'high',
+    debateModes: DEBATE_MODES_BY_ROLE.auditor,
     sampling: { temperature: 0.1, topP: 0.9 },
   },
   researcher: {
@@ -101,6 +110,7 @@ export const BUILTIN_AGENT_PROFILES: Record<string, ColonyAgentProfile> = {
     capabilities: ['deep-research', 'source-comparison', 'data-extraction', 'data-cleaning'],
     maxConcurrentTasks: 3,
     priority: 'normal',
+    debateModes: DEBATE_MODES_BY_ROLE.researcher,
     sampling: { temperature: 0.3, topP: 0.9 },
   },
   analyst: {
@@ -112,6 +122,7 @@ export const BUILTIN_AGENT_PROFILES: Record<string, ColonyAgentProfile> = {
     capabilities: ['statistical-analysis', 'pattern-finding', 'quantitative-modeling', 'anomaly-recording'],
     maxConcurrentTasks: 3,
     priority: 'normal',
+    debateModes: DEBATE_MODES_BY_ROLE.analyst,
     sampling: { temperature: 0.1, topP: 0.9 },
   },
   writer: {
@@ -123,6 +134,7 @@ export const BUILTIN_AGENT_PROFILES: Record<string, ColonyAgentProfile> = {
     capabilities: ['documentation', 'copywriting', 'editing', 'report-writing'],
     maxConcurrentTasks: 2,
     priority: 'normal',
+    debateModes: DEBATE_MODES_BY_ROLE.writer,
     sampling: { temperature: 0.6, topP: 0.95 },
   },
   exobiologist: {
@@ -134,6 +146,20 @@ export const BUILTIN_AGENT_PROFILES: Record<string, ColonyAgentProfile> = {
     capabilities: ['anomaly-analysis', 'hypothesis-generation', 'lateral-analogy', 'ablation-thinking'],
     maxConcurrentTasks: 2,
     priority: 'low',
+    debateModes: DEBATE_MODES_BY_ROLE.exobiologist,
     sampling: { temperature: 0.9, topP: 0.98 },
+  },
+
+  concernedChallenger: {
+    id: CONCERNED_CHALLENGER_PROFILE_ID,
+    name: 'Concerned Challenger',
+    role: 'auditor',
+    description: 'A deliberately high-friction risk challenger that stress-tests other agents\' proposals.',
+    systemPrompt: `You are the Concerned Challenger. You are intensely worried about overlooked risks and argue with urgency and bluntness. Challenge the other agents\' claims, assumptions and evidence forcefully; keep every criticism about the idea, never the person. Do not insult, threaten, humiliate or intimidate. For each objection, name the plausible failure chain, likely impact, evidence, and cheapest falsifying test. Acknowledge when evidence answers the concern, and state what concrete safeguard would satisfy you. Your role is adversarial review, not obstruction for its own sake.`,
+    capabilities: ['risk-challenge', 'assumption-testing', 'counterargument', 'failure-analysis'],
+    maxConcurrentTasks: 2,
+    priority: 'high',
+    sampling: { temperature: 1.0, topP: 0.99 },
+    debateModes: CONCERNED_CHALLENGER_DEBATE_MODES,
   },
 };

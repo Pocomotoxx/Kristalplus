@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { BUILTIN_AGENT_PROFILES } from '../agents/agent-profiles.js';
-import type { AgentRole, ColonyMember, ColonySpecialization, ColonyTask, TaskPriority } from '../types.js';
+import type { AgentRole, ColonyMember, ColonySpecialization, ColonyTask, DebateMode, TaskPriority } from '../types.js';
 import { ColonySession, loadRules, resolveRevision } from './session.js';
 import { QUORUM_STRATEGIES, QuorumStrategy } from '../consensus/strategies.js';
 import { ClaimError } from '../coordination/claim-ledger.js';
@@ -17,6 +17,7 @@ import { synthesizeReports } from '../chief/synthesis.js';
 import { computeMemberStats } from '../chief/member-stats.js';
 import { EPHEMERAL_MEMBER_KEY, ephemeralRecord, isEphemeralExpired, markEphemeralSwept } from '../coordination/ephemeral-members.js';
 import { parseSpecializations } from '../coordination/specializations.js';
+import { canUseDebateMode, debateModesForAgent, isDebateMode } from '../debate/debate-modes.js';
 
 export interface CommandResult {
   code: number;
@@ -72,8 +73,8 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
                                           [--quality 0..1] [--verified-by-test]   what you report; the colony learns from it but cannot check it
   fail <taskId> --error <text>            mark a task failed  [--quality 0..1: how far it got]
   propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous|weighted] [--timeout-min M] [--data text]
-  debate <proposalId> position|reply --as <member> --text <text> [--to <positionId>]
-  debate <proposalId> finalize --as <proposerId> --text <final proposal>
+  debate <proposalId> position|reply --as <member> --text <text> [--mode rational|fact-finding|courtroom|negotiation|quarrel] [--to <positionId>]
+  debate <proposalId> finalize --as <proposerId> --text <final proposal>  (only the concerned challenger profile may select quarrel)
   vote <proposalId> --as <frozenMemberId> (--approve|--reject) --reason <text> [--confidence 0..1]
   topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
   check                                   run gates BEFORE acting: [--command TEXT] [--text TEXT] [--file PATH [--diff-lines N] [--threshold N]]
@@ -129,6 +130,15 @@ function prepareDiscussionText(value: string | undefined, label: string): string
   return redacted;
 }
 
+function profileForMember(member: ColonyMember) {
+  return Object.values(BUILTIN_AGENT_PROFILES).find((profile) => profile.id === member.metadata?.profileId);
+}
+
+function debateModesForMember(member: ColonyMember) {
+  const profileId = typeof member.metadata?.profileId === 'string' ? member.metadata.profileId : undefined;
+  return profileForMember(member)?.debateModes ?? debateModesForAgent(member.role, profileId);
+}
+
 const serializeProposal = (p: { votes: Map<string, unknown> }) => ({ ...p, votes: Array.from(p.votes.values()) });
 
 function summarizeTask(t: ColonyTask) {
@@ -167,6 +177,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         role: { type: 'string' },
         capabilities: { type: 'string' },
         specializations: { type: 'string' },
+        mode: { type: 'string' },
         name: { type: 'string' },
         after: { type: 'string' },
         priority: { type: 'string' },
@@ -363,14 +374,14 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const open = hub.claims.get(task.id);
       if (open && open.status !== 'closed' && open.holderId === member.id) hub.claims.heartbeat(task.id, member.id, Date.now());
       else if (!open || open.status === 'closed') hub.claims.claim(task.id, member.id, Date.now());
-      const profile = Object.values(BUILTIN_AGENT_PROFILES).find((p) => p.id === member.metadata?.profileId);
+      const profile = profileForMember(member);
       const memory = await hub.codex.search(`${task.title} ${task.description}`, { topK: 3, minScore: 0.1 });
       await session.save();
       return reply({
         task: hub.orchestrator.getTask(task.id),
         // Why the last review sent the work back, so the member knows what to change.
         reviewFeedback: lastVerdict(task) === 'reject' ? { ...task.reviews![task.reviews!.length - 1], round: task.reviewRounds ?? 0, maxRounds: maxRoundsOf(task) } : null,
-        member: { id: member.id, role: member.role, specializations: member.capabilities.specializations ?? [] },
+        member: { id: member.id, role: member.role, specializations: member.capabilities.specializations ?? [], debateModes: debateModesForMember(member) },
         instructions: profile?.systemPrompt ?? null,
         // Advice only: the colony cannot set sampling or check that the host followed it.
         samplingAdvice: profile?.sampling ?? null,
@@ -616,7 +627,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
 
     case 'member': {
       if (sub === 'list') {
-        return reply({ members: hub.registry.getAllMembers().map((m) => ({ id: m.id, name: m.name, role: m.role, status: m.status, tasks: m.currentTaskIds, maxConcurrentTasks: m.capabilities.maxConcurrentTasks, specializations: m.capabilities.specializations ?? [], ...(ephemeralRecord(m) ? { ephemeral: true, expiresAt: ephemeralRecord(m)!.expiresAt } : {}) })) });
+        return reply({ members: hub.registry.getAllMembers().map((m) => ({ id: m.id, name: m.name, role: m.role, status: m.status, profileId: typeof m.metadata?.profileId === 'string' ? m.metadata.profileId : null, tasks: m.currentTaskIds, maxConcurrentTasks: m.capabilities.maxConcurrentTasks, specializations: m.capabilities.specializations ?? [], debateModes: debateModesForMember(m), ...(ephemeralRecord(m) ? { ephemeral: true, expiresAt: ephemeralRecord(m)!.expiresAt } : {}) })) });
       }
       if (sub === 'preset') {
         const preset = positionals[2];
@@ -635,7 +646,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
             if (existing.metadata?.colonyTemplate !== 'legacy-15') throw new CliError(`template member id collision: ${id}`);
             continue;
           }
-          const profile = Object.values(BUILTIN_AGENT_PROFILES).find((candidate) => candidate.role === slot.role);
+          const profile = slot.role === 'custom' ? undefined : Object.values(BUILTIN_AGENT_PROFILES).find((candidate) => candidate.role === slot.role);
           const member = hub.registry.register({
             id, name: `Colony template: ${slot.label}`, role: slot.role,
             capabilities: profile ? { tools: profile.capabilities, maxConcurrentTasks: profile.maxConcurrentTasks } : undefined,
@@ -977,6 +988,10 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         strategy,
         voters,
         eligibleVoterIds: eligible.map((member) => member.id),
+        eligibleVoterRoles: Object.fromEntries(eligible.map((member) => [member.id, member.role])),
+        eligibleVoterProfileIds: Object.fromEntries(eligible.map((member) => [
+          member.id, typeof member.metadata?.profileId === 'string' ? member.metadata.profileId : null,
+        ])),
         voterWeights,
         timeoutMs: timeoutMin * 60_000,
       });
@@ -997,20 +1012,28 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       if (action !== 'reply' && values.to) throw new CliError('--to is only valid for a reply');
       const text = prepareDiscussionText(values.text, `debate ${action}`);
       if (action === 'finalize') {
+        if (values.mode) throw new CliError('--mode is only valid for a position or reply');
         const finalized = hub.consensus.finalizeDiscussion(proposal.id, author.id, text);
         log('proposal.finalized', proposal.id, { authorId: author.id, finalProposal: text });
         await session.save();
         return reply({ proposal: serializeProposal(finalized) });
       }
       const kind = action as 'position' | 'reply';
+      const debateModes = debateModesForMember(author);
+      const mode: DebateMode = values.mode === undefined ? debateModes.default : isDebateMode(values.mode) ? values.mode : 'rational';
+      const profileId = typeof author.metadata?.profileId === 'string' ? author.metadata.profileId : null;
+      if ((values.mode !== undefined && !isDebateMode(values.mode)) || !canUseDebateMode(author.role, profileId, mode)) {
+        throw new CliError(`agent '${author.id}' may use only its default '${debateModes.default}' or alternative '${debateModes.alternate}' debate mode`);
+      }
       const entry = hub.consensus.addDiscussionEntry(proposal.id, {
         authorId: author.id,
         kind,
+        mode,
         text,
         ...(kind === 'reply' ? { replyTo: values.to } : {}),
       });
       log('proposal.discussion', proposal.id, {
-        entryId: entry.id, kind: entry.kind, authorId: entry.authorId,
+        entryId: entry.id, kind: entry.kind, mode: entry.mode, authorId: entry.authorId,
         replyTo: entry.replyTo ?? null, text: entry.text,
       });
       await session.save();

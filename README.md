@@ -136,3 +136,8 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 ## Eredet és licenc
 
 A projekt a Ruflo / Claude Flow (ruvnet) nyílt forráskódú munkájából inspirálódott, és a repó a `legacy/ruflo` mappában még tartalmazza annak kódját. Az átvett részek licencfeltételeit a végleges kivezetés előtt ellenőrizni kell. A `colony-core` saját, újraírt kód.
+
+
+#### Vitamódok
+
+Minden agentprofilnak saját alapértelmezett és alternatív vitamódja van: `rational`, `fact-finding`, `courtroom` vagy `negotiation`. Az egyetlen Aggodalmaskodó kritikus profil ezen felül használhatja a heves, állításközpontú `quarrel` módot (`temperature: 1.0`); a többi agentnél ezt a mag és a CLI is tiltja.
