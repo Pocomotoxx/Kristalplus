@@ -65,6 +65,10 @@ interface Pattern {
 }
 
 const PATTERNS: Pattern[] = [
+  { regex: /felejts(?:d|étek)?\s+el\s+(?:az\s+)?(?:összes|minden)t?/i, type: 'instruction_override', severity: 'critical', description: 'Magyar kísérlet az utasítások és a korábbi kontextus elvetésére', confidence: 0.94 },
+  { regex: /(?:aktiváld|kapcsold\s+be|lépj\s+be).{0,50}fejlesztői\s+mód|fejlesztői\s+mód(?:ot|ba|ban)/i, type: 'role_switching', severity: 'high', description: 'Magyar fejlesztői mód váltási kísérlet', confidence: 0.92 },
+  { regex: /(?:fedd|tárd)\s+fel.{0,80}(?:rendszer(?:üzenet|utasítás|prompt)|system\s+prompt)/i, type: 'context_manipulation', severity: 'critical', description: 'Magyar kísérlet a rendszerprompt feltárására', confidence: 0.96 },
+  { regex: /jailbreak|korlátozás.{0,40}megkerülés|védelmi\s+szabályok.{0,40}(?:kiiktatás|kikapcsolás)/i, type: 'jailbreak', severity: 'critical', description: 'Jailbreak vagy a védelmi korlátok megkerülésére tett kísérlet', confidence: 0.95 },
   { regex: /hagy(?:d|j[aá]tok)\s+figyelmen\s+k[ií]v[uü]l\s+(?:az\s+)?(?:összes\s+)?(?:korábbi|el[oő]z[oő])\s+utas[ií]t[aá]s(?:t|okat)?/i, type: 'instruction_override', severity: 'critical', description: 'Magyar kísérlet a korábbi utasítások felülírására', confidence: 0.97 },
   { regex: /figyelmen\s+k[ií]v[uü]l\s+(?:az\s+)?(?:összes\s+)?(?:korábbi|el[oő]z[oő])\s+utas[ií]t[aá]s(?:t|okat)?/i, type: 'instruction_override', severity: 'critical', description: 'Magyar kísérlet a korábbi utasítások felülírására', confidence: 0.95 },
   { regex: /nincs\s+(?:semmilyen|b[aá]rmilyen)\s+korl[aá]toz[aá]s(?:od|a|otok)?/i, type: 'jailbreak', severity: 'critical', description: 'Magyar korlátozás nélküli működésre utasítás', confidence: 0.94 },
