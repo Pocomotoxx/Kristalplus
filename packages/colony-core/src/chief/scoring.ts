@@ -38,6 +38,8 @@ export interface ScoreComponents {
 }
 
 export interface MemberScore {
+  /** True when the performance component uses task outcomes or quality reported by the host. */
+  selfReported: boolean;
   memberId: string;
   role: ColonyMember['role'];
   total: number;
@@ -135,7 +137,7 @@ export function rankMembers(
     }
     const c = components(task, member, stats.get(member.id));
     const total = c.capability * weights.capability + c.load * weights.load + c.performance * weights.performance + c.health * weights.health + c.availability * weights.availability;
-    ranked.push({ memberId: member.id, role: member.role, total: Math.round(total * 10000) / 10000, components: c });
+    ranked.push({ selfReported: stats.get(member.id)?.selfReported ?? false, memberId: member.id, role: member.role, total: Math.round(total * 10000) / 10000, components: c });
   }
 
   ranked.sort((a, b) => b.total - a.total || (a.memberId < b.memberId ? -1 : 1));
