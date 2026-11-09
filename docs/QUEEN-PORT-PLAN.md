@@ -236,3 +236,10 @@ Minden agentprofil két, előre rögzített vitafajtát kap: egy alapértelmezet
 | `quarrel` | Heves, adverszárius állítás- és kockázatpróba |
 
 Az egyetlen „Aggodalmaskodó kritikus” profil magas hőfokkal (`temperature: 1.0`) és `topP: 0.99` mintavételezési javaslattal működik. Alapmódja a `quarrel`, alternatívája a `courtroom`. A heves mód az állításokat, kockázati láncokat és bizonyítékhiányokat támadja; személyeskedés, fenyegetés és megfélemlítés nem része a módszernek. A többi agent profilja nem választhatja ezt a módot.
+
+
+## Általános agent skillek és feladathoz igazítás
+
+Minden built-in agent azonos általános skilleket kap: világos kommunikáció, strukturált tervezés, bizonyítékértékelés, bizonytalanság kezelése, kockázatfelismerés, feladathoz kötött tanulás, minőségellenőrzés, együttműködés és biztonságos munkavégzés.
+
+A domain- és szerepspecifikus tudás nem állandó viselkedési utasításként kerül az agenthez. A `next` minden kiosztásnál az adott feladat leírásából és `requiredCapabilities` értékeiből épít `skillContext`-et. Csak a kért képességekhez egyező profilképességek és tag-specializációk aktiválódnak. Ha a feladat nem kér megnevezett szaktudást, a host agent a feladat leírásából igazítja hozzá a tudást, és jelzi a feltételezéseket vagy hiányokat. A Colony Core ezt a prompt-környezetet adja át; maga nem tölt le modellt vagy külső tudásbázist.

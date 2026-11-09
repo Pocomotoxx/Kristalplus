@@ -141,3 +141,7 @@ A projekt a Ruflo / Claude Flow (ruvnet) nyílt forráskódú munkájából insp
 #### Vitamódok
 
 Minden agentprofilnak saját alapértelmezett és alternatív vitamódja van: `rational`, `fact-finding`, `courtroom` vagy `negotiation`. Az egyetlen Aggodalmaskodó kritikus profil ezen felül használhatja a heves, állításközpontú `quarrel` módot (`temperature: 1.0`); a többi agentnél ezt a mag és a CLI is tiltja.
+
+#### Általános és feladathoz igazított skillek
+
+Minden agent ugyanazt az általános alapkészletet kapja: kommunikáció, tervezés, bizonyítékértékelés, bizonytalanságkezelés, kockázatfelismerés, ellenőrzés, együttműködés és biztonságos munkavégzés. A feladatspecifikus szakértelem nem állandó agent-szerepként aktiválódik: a `next` válasz csak az adott feladat `requiredCapabilities` mezőjéhez illeszkedő profilképességeket és specializációkat adja át. Ha nincs ilyen megadva, a feladat leírása vezérli az adaptációt, és az agentnek jeleznie kell a feltételezéseit és tudásbeli hézagait.

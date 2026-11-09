@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { BUILTIN_AGENT_PROFILES } from '../agents/agent-profiles.js';
+import { buildTaskSkillContext } from '../agents/agent-skills.js';
 import type { AgentRole, ColonyMember, ColonySpecialization, ColonyTask, DebateMode, TaskPriority } from '../types.js';
 import { ColonySession, loadRules, resolveRevision } from './session.js';
 import { QUORUM_STRATEGIES, QuorumStrategy } from '../consensus/strategies.js';
@@ -383,6 +384,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         reviewFeedback: lastVerdict(task) === 'reject' ? { ...task.reviews![task.reviews!.length - 1], round: task.reviewRounds ?? 0, maxRounds: maxRoundsOf(task) } : null,
         member: { id: member.id, role: member.role, specializations: member.capabilities.specializations ?? [], debateModes: debateModesForMember(member) },
         instructions: profile?.systemPrompt ?? null,
+        skillContext: buildTaskSkillContext(profile, member, task),
         // Advice only: the colony cannot set sampling or check that the host followed it.
         samplingAdvice: profile?.sampling ?? null,
         memoryContext: memory.map((r) => ({ id: r.document.id, namespace: r.document.namespace, text: r.document.text, score: r.score })),
