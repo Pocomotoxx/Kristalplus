@@ -51,10 +51,12 @@ test('stats: counts, smoothed success rate, mean duration, open tasks', () => {
   const stats = computeMemberStats(members, tasks, []);
   const a = stats.get('a')!;
   assert.deepEqual([a.completed, a.failed, a.open], [2, 1, 1]);
+  assert.equal(a.selfReported, true);
   assert.equal(a.successRate, 3 / 5); // (2 + 1) / (3 + 2)
   assert.equal(a.avgDurationMs, 2000);
   assert.equal(stats.get('b')!.successRate, 1 / 3); // one failure: (0 + 1) / (1 + 2)
   assert.equal(stats.get('idle')!.successRate, 0.5); // no history: neither 0 nor 1
+  assert.equal(stats.get('idle')!.selfReported, false);
   assert.equal(stats.get('idle')!.avgDurationMs, null);
 });
 
@@ -107,6 +109,7 @@ test('a better track record wins, and the breakdown explains the total', () => {
   assert.equal(r.primary?.memberId, 'steady');
   assert.equal(r.heuristic, true);
   const s = r.ranked[0];
+  assert.equal(s.selfReported, true);
   const w = DEFAULT_SCORE_WEIGHTS;
   const c = s.components;
   assert.ok(Math.abs(s.total - (c.capability * w.capability + c.load * w.load + c.performance * w.performance + c.health * w.health + c.availability * w.availability)) < 1e-3);
