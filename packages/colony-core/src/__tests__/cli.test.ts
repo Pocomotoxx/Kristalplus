@@ -148,6 +148,25 @@ test('task add validates role, priority, dependencies and consensus', async () =
   assert.equal((await run('bogus')).code, 1);
 });
 
+
+test('custom members carry domain and release specializations into task matching', async () => {
+  const run = await project('specializations');
+  const domain = await run('member', 'add', 'Payments specialist', '--role', 'custom', '--specializations', 'domain:payments');
+  assert.equal(domain.code, 0);
+  const release = await run('member', 'add', 'Release operator', '--role', 'custom', '--specializations', 'release-operations');
+  assert.equal(release.code, 0);
+  const members = (await run('member', 'list')).out.members;
+  assert.deepEqual(members.find((member: any) => member.id === domain.out.member.id).specializations, ['domain:payments']);
+  assert.deepEqual(members.find((member: any) => member.id === release.out.member.id).specializations, ['release-operations']);
+  const domainTask = await run('task', 'add', 'Review payment rules', 'check payment behavior', '--role', 'custom', '--capabilities', 'domain:payments');
+  assert.equal(domainTask.out.task.assignedAgentId, domain.out.member.id);
+  const nextDomain = await run('next', '--as', domain.out.member.id);
+  assert.deepEqual(nextDomain.out.member.specializations, ['domain:payments']);
+  const releaseTask = await run('task', 'add', 'Prepare rollout', 'check rollback and monitoring', '--role', 'custom', '--capabilities', 'release-operations');
+  assert.equal(releaseTask.out.task.assignedAgentId, release.out.member.id);
+  assert.match((await run('task', 'add', 'Bad specialization', 'x', '--capabilities', 'domain:bad slug')).out.error, /unknown specialization/);
+});
+
 test('a consensus task cannot be completed before its proposal is approved', async () => {
   const run = await project('consensus');
   await run('boot');
@@ -161,6 +180,20 @@ test('a consensus task cannot be completed before its proposal is approved', asy
   const proposal = (await run('propose', id, 'ship it?', '--as', 'engineer')).out.proposal;
   assert.equal(proposal.status, 'open');
   assert.equal(proposal.quorum, 2);
+
+  assert.equal(proposal.phase, 'discussion');
+  const beforeDebateVote = await run('vote', proposal.id, '--as', 'reviewer', '--approve', '--reason', 'too soon');
+  assert.match(beforeDebateVote.out.error, /discussion is not finalized/);
+  const position = await run('debate', proposal.id, 'position', '--as', 'reviewer', '--text', 'Keep the release behind the test gate');
+  assert.equal(position.code, 0);
+  const reply = await run('debate', proposal.id, 'reply', '--as', 'tester', '--to', position.out.entry.id, '--text', 'The integration suite is still missing');
+  assert.equal(reply.code, 0);
+  const final = await run('debate', proposal.id, 'finalize', '--as', 'engineer', '--text', 'Release only after integration tests pass');
+  assert.equal(final.out.proposal.phase, 'voting');
+
+  const outsider = await run('member', 'add', 'Late voter', '--role', 'custom');
+  const excluded = await run('vote', proposal.id, '--as', outsider.out.member.id, '--approve', '--reason', 'joined late');
+  assert.match(excluded.out.error, /frozen electorate/);
 
   const noReason = await run('vote', proposal.id, '--as', 'reviewer', '--approve');
   assert.equal(noReason.code, 1);
@@ -192,6 +225,9 @@ test('propose --strategy derives the quorum from the active members and validate
 
   const maj = (await run('propose', id, 'again?', '--as', 'engineer', '--strategy', 'majority')).out.proposal;
   assert.equal(maj.quorum, 6);
+  const majPosition = await run('debate', maj.id, 'position', '--as', 'reviewer', '--text', 'Support based on current checks');
+  await run('debate', maj.id, 'reply', '--as', 'tester', '--to', majPosition.out.entry.id, '--text', 'The tested path is covered');
+  await run('debate', maj.id, 'finalize', '--as', 'engineer', '--text', 'Approve after current checks');
   for (const who of ['reviewer', 'tester', 'security', 'architect', 'auditor']) {
     await run('vote', maj.id, '--as', who, '--approve', '--reason', 'checked');
   }
@@ -207,6 +243,9 @@ test('weighted proposal records Colony performance and health weights in votes a
   assert.equal(proposal.strategy, 'weighted');
   assert.equal(Object.keys(proposal.voterWeights).length, proposal.voters);
   assert.ok(proposal.quorum > Object.values(proposal.voterWeights).reduce((a: number, b: number) => a + b, 0) / 2);
+  const position = await run('debate', proposal.id, 'position', '--as', 'reviewer', '--text', 'The criteria are met');
+  await run('debate', proposal.id, 'reply', '--as', 'tester', '--to', position.out.entry.id, '--text', 'The test evidence agrees');
+  await run('debate', proposal.id, 'finalize', '--as', 'engineer', '--text', 'Accept with the recorded safeguards');
   const reviewerId = (await run('member', 'list')).out.members.find((member: any) => member.role === 'reviewer').id;
   const vote = await run('vote', proposal.id, '--as', reviewerId, '--approve', '--reason', 'reviewed');
   assert.equal(vote.code, 0);

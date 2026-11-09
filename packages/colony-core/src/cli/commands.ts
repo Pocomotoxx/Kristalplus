@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { BUILTIN_AGENT_PROFILES } from '../agents/agent-profiles.js';
-import type { AgentRole, ColonyMember, ColonyTask, TaskPriority } from '../types.js';
+import type { AgentRole, ColonyMember, ColonySpecialization, ColonyTask, TaskPriority } from '../types.js';
 import { ColonySession, loadRules, resolveRevision } from './session.js';
 import { QUORUM_STRATEGIES, QuorumStrategy } from '../consensus/strategies.js';
 import { ClaimError } from '../coordination/claim-ledger.js';
@@ -16,6 +16,7 @@ import { buildTopology, isFullyConnected, shortestPath, TOPOLOGY_TYPES, Topology
 import { synthesizeReports } from '../chief/synthesis.js';
 import { computeMemberStats } from '../chief/member-stats.js';
 import { EPHEMERAL_MEMBER_KEY, ephemeralRecord, isEphemeralExpired, markEphemeralSwept } from '../coordination/ephemeral-members.js';
+import { parseSpecializations } from '../coordination/specializations.js';
 
 export interface CommandResult {
   code: number;
@@ -56,7 +57,7 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
 
   boot                                    load the colony, report boot status, print the work protocol
   status                                  members, tasks, open proposals
-  task add <title> <description>          [--role R] [--after id,id] [--priority P] [--consensus QUORUM] [--review [--max-review-rounds N]]
+  task add <title> <description>          [--role R] [--capabilities domain:<slug>,release-operations] [--after id,id] [--priority P] [--consensus QUORUM] [--review [--max-review-rounds N]]
   review <taskId> --as <reviewer> (--approve|--reject) --reason <text>   a rejection sends the work back; after N rejections (default 3) the task goes on hold for the user
   plan <taskId> [--kind K] [--apply]      analyze a task and propose its steps, waves and strategy; --apply creates them as tasks
   synthesize <taskId>                    compare completed child reports and return their lexical medoid and outliers
@@ -64,13 +65,16 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   score <taskId>                       rank the members for a task (heuristic weights), with backups and why the others cannot
   member list | member preset standard|legacy-15    add built-ins or 15 offline Colony template slots
   member activate <id>                     activate a legacy-15 template member
-  member add <name> --role R --ephemeral --ttl-min N   add a temporary member; member sweep expires it
+  member add <name> --role R [--specializations domain:<slug>,release-operations] [--ephemeral --ttl-min N]   add a member; member sweep expires temporary members
   member sweep                            expire temporary members; transfer claims and requeue unstarted tasks
   next --as <role|memberId>              take the next task for that role (with memory context)
   done <taskId> --result <text>           complete a task; a real, non-empty result is required
                                           [--quality 0..1] [--verified-by-test]   what you report; the colony learns from it but cannot check it
   fail <taskId> --error <text>            mark a task failed  [--quality 0..1: how far it got]
   propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous|weighted] [--timeout-min M] [--data text]
+  debate <proposalId> position|reply --as <member> --text <text> [--to <positionId>]
+  debate <proposalId> finalize --as <proposerId> --text <final proposal>
+  vote <proposalId> --as <frozenMemberId> (--approve|--reject) --reason <text> [--confidence 0..1]
   topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
   check                                   run gates BEFORE acting: [--command TEXT] [--text TEXT] [--file PATH [--diff-lines N] [--threshold N]]
                                           [--tool NAME --allow a,b*]; exit 3 on "block". A gate is a check you call, not an interceptor.
@@ -91,7 +95,6 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   claim release <taskId> --as <member>    give the task up (anyone may take it over at once)
   claim steal <taskId> --as <member>      take over a stealable claim (after its grace period)
   claim handoff <taskId> --as <member> --to <member> --reason <text> | claim accept|reject <taskId> --as <member>
-  vote <proposalId> --as <member> (--approve|--reject) --reason <text> [--confidence 0..1]
   memory add <text>                       [--ns NAMESPACE] [--allow-risky]   hostile text is refused unless --allow-risky
   memory search <query>                   [--k N] [--ns NAMESPACE]
 
@@ -111,6 +114,21 @@ function resolveMembers(session: ColonySession, who: string | undefined): Colony
   return members;
 }
 
+function resolveSingleMember(session: ColonySession, who: string | undefined): ColonyMember {
+  const members = resolveMembers(session, who);
+  if (members.length !== 1) throw new CliError(`--as '${who}' matches multiple members; use a member ID`);
+  return members[0];
+}
+
+function prepareDiscussionText(value: string | undefined, label: string): string {
+  if (!value?.trim()) throw new CliError(`${label} needs --text`);
+  const text = value.trim();
+  if (scanText(text).verdict === 'hostile') throw new CliError(`${label} text was refused by the injection scan`);
+  const redacted = redactText(text).text;
+  if (redacted.length > 4000) throw new CliError(`${label} text must be at most 4000 characters after redaction`);
+  return redacted;
+}
+
 const serializeProposal = (p: { votes: Map<string, unknown> }) => ({ ...p, votes: Array.from(p.votes.values()) });
 
 function summarizeTask(t: ColonyTask) {
@@ -119,6 +137,7 @@ function summarizeTask(t: ColonyTask) {
     id: t.id,
     title: t.title,
     status: t.status,
+    requiredCapabilities: t.requiredCapabilities,
     priority: t.priority,
     assignedAgentId: t.assignedAgentId,
     dependencies: t.dependencies,
@@ -146,6 +165,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         dir: { type: 'string' },
         as: { type: 'string' },
         role: { type: 'string' },
+        capabilities: { type: 'string' },
+        specializations: { type: 'string' },
         name: { type: 'string' },
         after: { type: 'string' },
         priority: { type: 'string' },
@@ -283,6 +304,9 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       for (const dep of dependencies) {
         if (!hub.orchestrator.getTask(dep)) throw new CliError(`unknown dependency '${dep}'`);
       }
+      let requiredCapabilities: string[];
+      try { requiredCapabilities = parseSpecializations(values.capabilities); }
+      catch (err: any) { throw new CliError(`--capabilities: ${err.message}`); }
       const quorum = values.consensus ? Number(values.consensus) : undefined;
       if (quorum !== undefined && (!Number.isInteger(quorum) || quorum < 1)) throw new CliError('--consensus must be a positive integer');
 
@@ -298,6 +322,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         title,
         description,
         requiredRole: values.role as AgentRole | undefined,
+        requiredCapabilities,
         priority: values.priority as TaskPriority | undefined,
         dependencies,
         consensusRequired: quorum !== undefined,
@@ -345,7 +370,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         task: hub.orchestrator.getTask(task.id),
         // Why the last review sent the work back, so the member knows what to change.
         reviewFeedback: lastVerdict(task) === 'reject' ? { ...task.reviews![task.reviews!.length - 1], round: task.reviewRounds ?? 0, maxRounds: maxRoundsOf(task) } : null,
-        member: { id: member.id, role: member.role },
+        member: { id: member.id, role: member.role, specializations: member.capabilities.specializations ?? [] },
         instructions: profile?.systemPrompt ?? null,
         // Advice only: the colony cannot set sampling or check that the host followed it.
         samplingAdvice: profile?.sampling ?? null,
@@ -591,7 +616,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
 
     case 'member': {
       if (sub === 'list') {
-        return reply({ members: hub.registry.getAllMembers().map((m) => ({ id: m.id, name: m.name, role: m.role, status: m.status, tasks: m.currentTaskIds, maxConcurrentTasks: m.capabilities.maxConcurrentTasks, ...(ephemeralRecord(m) ? { ephemeral: true, expiresAt: ephemeralRecord(m)!.expiresAt } : {}) })) });
+        return reply({ members: hub.registry.getAllMembers().map((m) => ({ id: m.id, name: m.name, role: m.role, status: m.status, tasks: m.currentTaskIds, maxConcurrentTasks: m.capabilities.maxConcurrentTasks, specializations: m.capabilities.specializations ?? [], ...(ephemeralRecord(m) ? { ephemeral: true, expiresAt: ephemeralRecord(m)!.expiresAt } : {}) })) });
       }
       if (sub === 'preset') {
         const preset = positionals[2];
@@ -639,19 +664,31 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       if (sub === 'add') {
         const name = positionals[2] ?? values.name;
         if (!name?.trim()) throw new CliError('member add needs a non-empty name');
-        if (!values.ephemeral) throw new CliError('member add currently requires --ephemeral');
         if (!values.role || !ROLES.includes(values.role as AgentRole)) throw new CliError(`--role must be one of ${ROLES.join(', ')}`);
-        const ttlMin = values['ttl-min'] === undefined ? Number.NaN : Number(values['ttl-min']);
-        const due = Date.now() + ttlMin * 60_000;
-        if (!Number.isFinite(ttlMin) || ttlMin <= 0 || !Number.isFinite(due) || due > 8.64e15) throw new CliError('--ttl-min must be a positive finite number within the supported date range');
-        const now = Date.now(), expiresAt = now + ttlMin * 60_000;
+        if (values.ephemeral && values['ttl-min'] === undefined) throw new CliError('--ephemeral requires --ttl-min');
+        if (!values.ephemeral && values['ttl-min'] !== undefined) throw new CliError('--ttl-min requires --ephemeral');
+        let specializations: ColonySpecialization[];
+        try { specializations = parseSpecializations(values.specializations); }
+        catch (err: any) { throw new CliError(`--specializations: ${err.message}`); }
+        const ttlMin = values['ttl-min'] === undefined ? undefined : Number(values['ttl-min']);
+        const expiresAt = ttlMin === undefined ? undefined : Date.now() + ttlMin * 60_000;
+        if (values.ephemeral && (!Number.isFinite(ttlMin) || ttlMin! <= 0 || !Number.isFinite(expiresAt) || expiresAt! > 8.64e15)) {
+          throw new CliError('--ttl-min must be a positive finite number within the supported date range');
+        }
+        const now = Date.now();
         const slug = name.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'member';
-        const baseId = `ephemeral_${values.role}_${slug}_${now.toString(36)}`;
+        const prefix = values.ephemeral ? 'ephemeral' : 'member';
+        const baseId = `${prefix}_${values.role}_${slug}_${now.toString(36)}`;
         let id = baseId, suffix = 1;
         while (hub.registry.getMember(id)) id = `${baseId}_${suffix++}`;
-        const member = hub.registry.register({ id, name: name.trim(), role: values.role as AgentRole, metadata: { [EPHEMERAL_MEMBER_KEY]: { expiresAt, createdBy: values.as ?? 'host' } } });
-        log('member.added', member.id, { role: member.role, ephemeral: true, expiresAt }); await session.save();
-        return reply({ member, ephemeral: { expiresAt, ttlMin } });
+        const member = hub.registry.register({
+          id, name: name.trim(), role: values.role as AgentRole,
+          capabilities: { specializations },
+          metadata: values.ephemeral ? { [EPHEMERAL_MEMBER_KEY]: { expiresAt, createdBy: values.as ?? 'host' } } : {},
+        });
+        log('member.added', member.id, { role: member.role, specializations, ephemeral: Boolean(values.ephemeral), expiresAt: expiresAt ?? null });
+        await session.save();
+        return reply({ member, ...(expiresAt !== undefined ? { ephemeral: { expiresAt, ttlMin } } : {}) });
       }
       if (sub === 'sweep') {
         const now = Date.now();
@@ -902,7 +939,10 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const task = sub ? hub.orchestrator.getTask(sub) : undefined;
       if (!task) throw new CliError(`task '${sub ?? ''}' not found`);
       if (!topic) throw new CliError('propose needs a topic');
-      const [proposer] = resolveMembers(session, values.as);
+      const proposer = resolveSingleMember(session, values.as);
+      if (proposer.status === 'offline' || proposer.status === 'error' || isEphemeralExpired(proposer)) {
+        throw new CliError('the proposer must be an active Colony member');
+      }
       const strategy = values.strategy as QuorumStrategy | undefined;
       if (strategy !== undefined && !QUORUM_STRATEGIES.includes(strategy)) {
         throw new CliError(`unknown strategy '${strategy}' (use ${QUORUM_STRATEGIES.join(', ')})`);
@@ -911,18 +951,21 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const quorum = values.quorum ? Number(values.quorum) : strategy ? undefined : task.minConsensusQuorum;
       const timeoutMin = values['timeout-min'] ? Number(values['timeout-min']) : 60;
       if (quorum !== undefined && (!Number.isInteger(quorum) || quorum < 1)) throw new CliError('--quorum must be a positive integer');
-      if (!(timeoutMin > 0)) throw new CliError('--timeout-min must be positive');
+      if (!Number.isFinite(timeoutMin) || !(timeoutMin > 0) || !Number.isFinite(timeoutMin * 60_000) || Date.now() + timeoutMin * 60_000 > 8.64e15) throw new CliError('--timeout-min must be a positive finite number within the supported date range');
       // Freeze the electorate and its Chief-derived weights at proposal creation.
-      const eligible = hub.registry.getAllMembers().filter((m) => m.status !== 'offline' && m.status !== 'error' && m.role !== 'exobiologist');
+      const eligible = hub.registry.getAllMembers().filter((m) =>
+        m.status !== 'offline' && m.status !== 'error' && m.role !== 'exobiologist' && !isEphemeralExpired(m));
       const voters = eligible.length;
+      if (voters === 0) throw new CliError('cannot open a proposal without active eligible voters');
+      const stats = computeMemberStats(hub.registry.getAllMembers(), hub.orchestrator.getAllTasks(), hub.claims.list());
       const voterWeights = strategy === 'weighted'
-        ? Object.fromEntries([...computeMemberStats(hub.registry.getAllMembers(), hub.orchestrator.getAllTasks(), hub.claims.list()).entries()]
-            .filter(([id]) => eligible.some((member) => member.id === id))
-            .map(([id, stats]) => {
-              const performance = stats.avgQuality === null ? stats.successRate : 0.7 * stats.successRate + 0.3 * stats.avgQuality;
-              const health = Math.max(0, Math.min(1, 1 - 0.3 * stats.staleClaims));
-              return [id, Math.round(performance * health * 10000) / 10000] as const;
-            }))
+        ? Object.fromEntries(eligible.map((member) => {
+            const stat = stats.get(member.id);
+            if (!stat) throw new CliError(`missing ledger score for voter '${member.id}'`);
+            const performance = stat.avgQuality === null ? stat.successRate : 0.7 * stat.successRate + 0.3 * stat.avgQuality;
+            const health = Math.max(0, Math.min(1, 1 - 0.3 * stat.staleClaims));
+            return [member.id, Math.max(0.0001, Math.round(performance * health * 10000) / 10000)] as const;
+          }))
         : undefined;
 
       const proposal = await hub.consensus.submitProposal({
@@ -932,14 +975,46 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         data: values.data ?? null,
         quorum,
         strategy,
-        voters: strategy ? voters : undefined,
+        voters,
+        eligibleVoterIds: eligible.map((member) => member.id),
         voterWeights,
         timeoutMs: timeoutMin * 60_000,
       });
       await hub.orchestrator.updateTaskProgress(task.id, proposer.id, 'consensus');
-      log('proposal.created', proposal.id, { taskId: task.id, proposerId: proposer.id, quorum: proposal.quorum, strategy: strategy ?? null });
+      log('proposal.created', proposal.id, { taskId: task.id, proposerId: proposer.id, quorum: proposal.quorum, strategy: strategy ?? null, eligibleVoterIds: proposal.eligibleVoterIds, voterWeights: proposal.voterWeights ?? null });
       await session.save();
       return reply({ proposal: serializeProposal(proposal) });
+    }
+
+    case 'debate': {
+      const proposal = sub ? hub.consensus.getProposal(sub) : undefined;
+      if (!proposal) throw new CliError(`proposal '${sub ?? ''}' not found`);
+      const action = positionals[2];
+      if (!['position', 'reply', 'finalize'].includes(action ?? '')) {
+        throw new CliError('usage: debate <proposalId> position|reply|finalize --as <member> --text <text> [--to <positionId>]');
+      }
+      const author = resolveSingleMember(session, values.as);
+      if (action !== 'reply' && values.to) throw new CliError('--to is only valid for a reply');
+      const text = prepareDiscussionText(values.text, `debate ${action}`);
+      if (action === 'finalize') {
+        const finalized = hub.consensus.finalizeDiscussion(proposal.id, author.id, text);
+        log('proposal.finalized', proposal.id, { authorId: author.id, finalProposal: text });
+        await session.save();
+        return reply({ proposal: serializeProposal(finalized) });
+      }
+      const kind = action as 'position' | 'reply';
+      const entry = hub.consensus.addDiscussionEntry(proposal.id, {
+        authorId: author.id,
+        kind,
+        text,
+        ...(kind === 'reply' ? { replyTo: values.to } : {}),
+      });
+      log('proposal.discussion', proposal.id, {
+        entryId: entry.id, kind: entry.kind, authorId: entry.authorId,
+        replyTo: entry.replyTo ?? null, text: entry.text,
+      });
+      await session.save();
+      return reply({ proposal: serializeProposal(proposal), entry });
     }
 
     case 'vote': {
@@ -948,11 +1023,11 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const confidence = values.confidence === undefined ? 1 : Number(values.confidence);
       if (!(confidence >= 0 && confidence <= 1)) throw new CliError('--confidence must be between 0 and 1');
       if (!sub) throw new CliError('usage: vote <proposalId> --as <member> ...');
-      const [voter] = resolveMembers(session, values.as);
-      if (voter.role === 'exobiologist') throw new CliError('the exobiologist is an advisory role and does not vote; its hypotheses go through `anomaly`');
-      const proposal = await hub.consensus.castVote(sub, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason: values.reason });
+      const voter = resolveSingleMember(session, values.as);
+      const reason = redactText(values.reason).text.slice(0, 500);
+      const proposal = await hub.consensus.castVote(sub, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason });
       const recordedVote = proposal.votes.get(voter.id);
-      log('proposal.vote', proposal.id, { voterId: voter.id, approve: Boolean(values.approve), confidence, weight: recordedVote?.weight ?? null, status: proposal.status });
+      log('proposal.vote', proposal.id, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason, weight: recordedVote?.weight ?? null, status: proposal.status });
       await session.save();
       return reply({ proposal: serializeProposal(proposal), voteWeight: recordedVote?.weight ?? null, ...(proposal.strategy === 'weighted' ? { note: 'Weight was captured at proposal creation from ledger-derived performance × health. It is heuristic and reflects outcomes reported by the host.' } : {}) });
     }

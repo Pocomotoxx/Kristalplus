@@ -24,13 +24,15 @@ export type AgentRole =
  */
 export const ADVISORY_ROLES: readonly AgentRole[] = ['auditor', 'exobiologist'];
 
+export type ColonySpecialization = 'release-operations' | `domain:${string}`;
+
 export type AgentStatus = 'idle' | 'busy' | 'voting' | 'offline' | 'error';
 
 export interface ColonyAgentCapabilities {
   tools: string[];
   maxConcurrentTasks: number;
   languages?: string[];
-  specializations?: string[];
+  specializations?: ColonySpecialization[];
   contextWindowLimit?: number;
 }
 
@@ -114,6 +116,17 @@ export interface ColonyEvent<T = unknown> {
   payload: T;
 }
 
+export type ProposalPhase = 'discussion' | 'voting';
+export type DiscussionEntryKind = 'position' | 'reply';
+export interface ProposalDiscussionEntry {
+  id: string;
+  kind: DiscussionEntryKind;
+  authorId: string;
+  replyTo?: string;
+  text: string;
+  createdAt: number;
+}
+
 export interface ConsensusProposal<T = unknown> {
   id: string;
   taskId: string;
@@ -123,11 +136,17 @@ export interface ConsensusProposal<T = unknown> {
   votes: Map<string, ConsensusVote>;
   status: 'open' | 'approved' | 'rejected' | 'timeout';
   quorum: number;
-  /** Set when the quorum was derived from a strategy: the number of eligible voters. */
+  /** Number of eligible voters captured when the proposal was created. */
   voters?: number;
   strategy?: string;
+  /** New proposals freeze this electorate at creation; absent only on pre-migration ledger records. */
+  eligibleVoterIds?: readonly string[];
+  /** New proposals begin in discussion; legacy open proposals restore directly to voting. */
+  phase?: ProposalPhase;
+  discussion?: ProposalDiscussionEntry[];
+  finalProposal?: string;
   /** Fixed weights captured at proposal creation, so later history cannot change its result. */
-  voterWeights?: Record<string, number>;
+  voterWeights?: Readonly<Record<string, number>>;
   createdAt: number;
   expiresAt: number;
 }

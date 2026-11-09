@@ -66,7 +66,7 @@ Az A lista csomagjai a törlés előtt ellenőrizve: egyik sem függött a tör�
 
 | Csomag | Állapot |
 |---|---|
-| `swarm` | **Részben átvéve:** topológia (`topology.ts`), kvórum-stratégiák (`consensus/strategies.ts`), CLI: `topology` és `propose --strategy`. A P8 figyelem-maradékát önálló, szóalapú jelentésszintézisként átültettük; a P7, P9 és P11 fázisok még hátra vannak. A futtató- és föderációs koordinátorok nem kerülnek át. A részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
+| `swarm` | **Részben átvéve:** topológia, kvórum-stratégiák, rögzített választói körű vitafolyam, P8 Colony-native szintézis, P9 ideiglenes és sablon tagok. A Chief override és a P11 anomália-életút még hátra van. A futtató- és föderációs koordinátorok nem kerülnek át. A részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `claims` | **Részben átvéve:** `coordination/claim-ledger.ts` (foglalás, életjel, blokkolás, elavulás, átvétel, átadás), CLI: `claim ...`. Az összevonás és a szövetséges (federated) tár nem. A részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `memory` | **Részben átvéve:** `memory/hnsw-index.ts` (determinisztikus HNSW), a `FileVectorStore` használja. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |
 | `guidance` | **Részben átvéve:** `gates.ts` (kapuk) és a `check` parancs. A többi nem. Részletek: [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md). |

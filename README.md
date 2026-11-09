@@ -19,7 +19,7 @@ A korábbi „raj” (swarm) helyett mindenhol **kolónia** (colony) a terminol�
 ## Mit tud a `colony-core`
 
 - **Koordináció:** ágensnyilvántartás (kapacitás, `idle`/`busy`/`offline`), feladatbontás függőségekkel, automatikus delegálás, eseménybusz témákkal és wildcarddal.
-- **Konszenzus:** kvórum- és megbízhatósággal súlyozott szavazás. A kvórum rögzíthető, vagy stratégiából jön a szavazók számából: `majority`, `supermajority`, `byzantine` (3f+1), `unanimous`, `weighted` (a javaslat rögzíti a tagok teljesítmény × egészség súlyát). Ha a kvórum már nem érhető el, a javaslat azonnal elutasítva lesz.
+- **Konszenzus és vitafolyam:** rögzített választói kör; rövid `position → reply → finalize → vote` menet. A lezáráshoz legalább két aktív szavazó, egy álláspont és egy másik tag válasza kell; a tagok és súlyok rögzülnek a javaslatban. A posztokat és a végleges szöveget a hash-láncolt audit is rögzíti. A kvórum: `majority`, `supermajority`, `byzantine` (3f+1), `unanimous` vagy `weighted` (a javaslat rögzíti a tagok teljesítmény × egészség súlyát). A szavazás a véglegesítésig zárva marad; újonnan belépő és a választói körön kívüli tag nem szavazhat.
 - **Foglalások (claims):** a `next` foglalást nyit a feladatra, a `done` / `fail` lezárja. Ha a gazdagép-munkamenet elhal, a foglalás elavul, és másik tag átveheti, vagy a gazda átadhatja. Az idő mindig paraméter, nincs időzítő és véletlen, ezért az egész visszajátszható.
 - **Topológia:** a tagok kapcsolati gráfja (`mesh`, `star`, `tree`, `hybrid`), determinisztikusan: ugyanazokból a tagokból mindig ugyanaz a gráf. Vezetőválasztás, szomszédok, legrövidebb út.
 - **Memória (Vector Codex):** szolgáltatófüggetlen embedding-felület, koszinusz-hasonlóságú vektortár névterekkel, fájlalapú perzisztencia a `.colony/memory.json` fájlban. A keresés alapból pontos (lineáris), 500 vektor fölött determinisztikus HNSW-gráf gyorsítja (`index: 'linear' | 'hnsw' | 'auto'`). A gráf nincs mentve, a tárolt dokumentumokból épül újra, mindig ugyanúgy.
@@ -62,7 +62,7 @@ node dist/cli.js synthesize <parentTaskId>                   # lezárt részfela
 |---|---|
 | `boot` | Opcionális: ellenőrzi és kiírja az állapot és a szabályok diagnosztikáját. Munkakezdéshez nem szükséges. |
 | `status` | Tagok, feladatok, nyitott javaslatok. |
-| `task add <cím> <leírás>` | Új feladat (`--role`, `--after id,id`, `--priority`, `--consensus <kvórum>`). Szerep nélkül a MoE-router választ. |
+| `task add <cím> <leírás>` | Új feladat (`--role`, `--capabilities`, `--after id,id`, `--priority`, `--consensus <kvórum>`). Szerep nélkül a MoE-router választ. |
 | `next --as <szerep\|tag>` | A szerepnek kiosztott következő feladat, a szerep utasításával és a releváns memóriával. |
 | `done <id> --result <szöveg> [--quality 0..1] [--verified-by-test]` | Lezárja a feladatot. Konszenzusos feladatnál előbb jóváhagyott javaslat kell. A kolónia megjegyzi a megoldást. A `--quality` és a `--verified-by-test` a **host állítása**: a kolónia tanul belőle (router, tagstatisztika, kiosztás), de nem méri és nem ellenőrzi. A jutalom sikernél `0,2 + 0,8 × minőség`, megadás nélkül 0,5. |
 | `fail <id> --error <szöveg> [--quality 0..1]` | Hibásnak jelöli a feladatot. A jutalom mindig negatív: `-(1 - 0,3 × minőség)`, megadás nélkül -1. |
