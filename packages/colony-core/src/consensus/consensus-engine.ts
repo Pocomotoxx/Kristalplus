@@ -54,7 +54,7 @@ function independentApprovalCount(votes: readonly ConsensusVote[]): number {
 }
 
 /**
- * Robust, model-agnostic consensus engine supporting quorum and confidence-weighted voting
+ * Model-agnostic consensus engine for quorum rules and explicitly weighted strategies
  */
 export class ConsensusEngine {
   private proposals = new Map<string, ConsensusProposal<any>>();
@@ -250,6 +250,11 @@ export class ConsensusEngine {
       throw new Error('executionContextId must contain 1–200 non-whitespace characters');
     }
 
+    const confidence = vote.confidence ?? 1.0;
+    if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+      throw new Error('confidence must be a finite number between 0 and 1');
+    }
+
     if (proposal.voters !== undefined && !proposal.votes.has(vote.voterId) && proposal.votes.size >= proposal.voters) {
       throw new Error(`Proposal '${proposalId}' already has votes from all ${proposal.voters} eligible voters`);
     }
@@ -261,7 +266,7 @@ export class ConsensusEngine {
     proposal.votes.set(vote.voterId, {
       voterId: vote.voterId,
       approve: vote.approve,
-      confidence: vote.confidence ?? 1.0,
+      confidence,
       ...(vote.executionContextId ? { executionContextId: vote.executionContextId.trim() } : {}),
       ...(proposal.strategy === 'weighted' ? { weight: proposal.voterWeights![vote.voterId] } : {}),
       reason: vote.reason,
@@ -287,8 +292,8 @@ export class ConsensusEngine {
     const approvals = votes.filter((v) => v.approve);
     const rejections = votes.filter((v) => !v.approve);
 
-    // Calculate confidence-weighted approval
-    const totalWeightedApproval = approvals.reduce((sum, v) => sum + (v.weight ?? v.confidence), 0);
+    // Confidence is recorded as advisory metadata only; only the weighted strategy uses frozen vote weights.
+    const totalWeightedApproval = approvals.reduce((sum, v) => sum + (v.weight ?? 0), 0);
     const approvalCount = proposal.strategy === 'weighted' ? totalWeightedApproval
       : proposal.strategy === 'byzantine' ? independentApprovalCount(votes) : approvals.length;
 
@@ -297,8 +302,8 @@ export class ConsensusEngine {
       this.messageBus.publish('consensus:proposal_approved', 'consensus_engine', {
         proposalId: proposal.id,
         taskId: proposal.taskId,
-        approvals: approvals.length,
-        weightedApproval: totalWeightedApproval,
+        approvals: approvalCount,
+        ...(proposal.strategy === 'weighted' ? { weightedApproval: totalWeightedApproval } : {}),
       });
     } else if (
       proposal.voters !== undefined
