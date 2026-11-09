@@ -65,7 +65,7 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   claim release <taskId> --as <member>    give the task up (anyone may take it over at once)
   claim steal <taskId> --as <member>      take over a stealable claim (after its grace period)
   claim handoff <taskId> --as <member> --to <member> --reason <text> | claim accept|reject <taskId> --as <member>
-  vote <proposalId> --as <member> (--approve|--reject) --reason <text> [--confidence 0..1]
+  vote <proposalId> --as <member> (--approve|--reject) --reason <text> [--confidence 0..1] [--execution-context ID]
   memory add <text>                       [--ns NAMESPACE] [--allow-risky]   hostile text is refused unless --allow-risky
   memory search <query>                   [--k N] [--ns NAMESPACE]
 
@@ -137,6 +137,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         error: { type: 'string' },
         reason: { type: 'string' },
         confidence: { type: 'string' },
+        'execution-context': { type: 'string' },
         progress: { type: 'string' },
         command: { type: 'string' },
         text: { type: 'string' },
@@ -820,8 +821,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       if (!sub) throw new CliError('usage: vote <proposalId> --as <member> ...');
       const [voter] = resolveMembers(session, values.as);
       if (voter.role === 'exobiologist') throw new CliError('the exobiologist is an advisory role and does not vote; its hypotheses go through `anomaly`');
-      const proposal = await hub.consensus.castVote(sub, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason: values.reason });
-      log('proposal.vote', proposal.id, { voterId: voter.id, approve: Boolean(values.approve), confidence, status: proposal.status });
+      const proposal = await hub.consensus.castVote(sub, { voterId: voter.id, approve: Boolean(values.approve), confidence, reason: values.reason, executionContextId: values['execution-context'] });
+      log('proposal.vote', proposal.id, { voterId: voter.id, approve: Boolean(values.approve), confidence, executionContextId: proposal.votes.get(voter.id)?.executionContextId ?? null, independenceProof: proposal.independenceProof, status: proposal.status });
       await session.save();
       return reply({ proposal: serializeProposal(proposal) });
     }
