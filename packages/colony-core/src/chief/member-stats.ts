@@ -11,6 +11,8 @@ import type { Claim } from '../coordination/claim-ledger.js';
 import type { ColonyMember, ColonyTask } from '../types.js';
 
 export interface MemberStats {
+  /** True when this member has completed/failed task outcomes or quality values reported by the host. */
+  selfReported: boolean;
   memberId: string;
   completed: number;
   failed: number;
@@ -46,6 +48,7 @@ export function computeMemberStats(
   const qualities = new Map<string, number[]>();
   for (const m of members) {
     stats.set(m.id, {
+      selfReported: false,
       memberId: m.id,
       completed: 0,
       failed: 0,
@@ -87,6 +90,7 @@ export function computeMemberStats(
   }
 
   for (const s of stats.values()) {
+    s.selfReported = s.completed + s.failed > 0 || s.qualityReports > 0;
     s.successRate = (s.completed + 1) / (s.completed + s.failed + 2);
     const d = durations.get(s.memberId)!;
     s.avgDurationMs = d.length === 0 ? null : Math.round(d.reduce((a, b) => a + b, 0) / d.length);
