@@ -14,7 +14,7 @@ async function runVoteSet(contextIds: string[]) {
     strategy: 'byzantine',
     voters: 4,
     eligibleVoterIds: voters,
-    eligibleVoterRoles: Object.fromEntries(voters.map((id) => [id, 'custom'])),
+    eligibleVoterRoles: Object.fromEntries(voters.map((id) => [id, 'custom' as const])),
     eligibleVoterProfileIds: Object.fromEntries(voters.map((id) => [id, null])),
   });
   const position = engine.addDiscussionEntry(proposal.id, {
