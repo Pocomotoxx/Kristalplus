@@ -243,3 +243,12 @@ Az egyetlen „Aggodalmaskodó kritikus” profil magas hőfokkal (`temperature:
 Minden built-in agent azonos általános skilleket kap: világos kommunikáció, strukturált tervezés, bizonyítékértékelés, bizonytalanság kezelése, kockázatfelismerés, feladathoz kötött tanulás, minőségellenőrzés, együttműködés és biztonságos munkavégzés.
 
 A domain- és szerepspecifikus tudás nem állandó viselkedési utasításként kerül az agenthez. A `next` minden kiosztásnál az adott feladat leírásából és `requiredCapabilities` értékeiből épít `skillContext`-et. Csak a kért képességekhez egyező profilképességek és tag-specializációk aktiválódnak. Ha a feladat nem kér megnevezett szaktudást, a host agent a feladat leírásából igazítja hozzá a tudást, és jelzi a feltételezéseket vagy hiányokat. A Colony Core ezt a prompt-környezetet adja át; maga nem tölt le modellt vagy külső tudásbázist.
+
+
+## Mother — virtuális, nem döntéshozó tanácsadó
+
+A beépített `mother` szerep egy virtuális AI-agent a host LLM-rendszerében. A `member_mother` tagként látszik a kolóniában, a javaslatfórumon pedig külön `forumAdvisor` metaadat jelzi a jelenlétét. Nem része a vitafolyamnak, nem ad `position` vagy `reply` bejegyzést, nem szavaz, nem kerül a befagyasztott választói körbe, és feladatot sem kaphat.
+
+Az agentek a `mother ask --as <agentId> --question <szöveg> [--task <id>] [--proposal <id>] [--context <szöveg>]` paranccsal kérdezhetik. A Colony Core a kérdést, a releváns feladat/javaslat adatait és az egyező belső memóriaelemeket forrásazonosítóval egy `colony.mother.consult.v1` LLM-kérésbe csomagolja. Mother professzionális tanácsadó, erőssége a több nézőpontú elemzés; kizárólag átadott bizonyítékra támaszkodhat, forrásokat nevez meg, elkülöníti a tényt és következtetést, és kimondja, ha nincs elegendő adat. Mintavételi javaslata `temperature: 0`, a profil alap vitamódja nincs beállítva.
+
+A core nem hív modellt és nem gyárt Mother-választ: a host futtatja a strukturált kérést a Mother LLM-profiljával. A visszaadott tanács nem kap döntési jogot, és a core nem állítja, hogy az LLM-választ önállóan ellenőrizte.

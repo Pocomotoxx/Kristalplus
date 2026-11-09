@@ -27,7 +27,7 @@ test('commands run without boot and initialize built-in members on first use', a
   const run = await project('noboot');
   const r = await run('status');
   assert.equal(r.code, 0);
-  assert.equal(r.out.colony.totalMembers, 12);
+  assert.equal(r.out.colony.totalMembers, 13);
   const added = await run('task', 'add', 'No boot needed', 'work starts directly', '--role', 'engineer');
   assert.equal(added.code, 0);
 });
@@ -66,11 +66,11 @@ test('boot seeds the built-in members once and reports UNVERIFIABLE outside git'
   assert.equal(first.code, 0);
   assert.equal(first.out.boot.status, 'UNVERIFIABLE');
   assert.equal(first.out.boot.revision, 'unknown');
-  assert.equal(first.out.colony.totalMembers, 12);
+  assert.equal(first.out.colony.totalMembers, 13);
   assert.ok(first.out.protocol.length > 0);
 
   const second = await run('boot');
-  assert.equal(second.out.colony.totalMembers, 12);
+  assert.equal(second.out.colony.totalMembers, 13);
   assert.ok(second.out.boot.evidence.some((e: any) => e.path === '.colony/ledger.json' && /^[0-9a-f]{64}$/.test(e.sha256)));
 });
 
@@ -227,7 +227,7 @@ test('propose --strategy derives the quorum from the active members and validate
   assert.match((await run('propose', id, 't', '--as', 'engineer', '--strategy', 'majority', '--quorum', '2')).out.error, /not both/);
 
   const byz = await run('propose', id, 'ship it?', '--as', 'engineer', '--strategy', 'byzantine');
-  assert.equal(byz.out.proposal.voters, 11); // twelve built-in agents; the exobiologist does not vote
+  assert.equal(byz.out.proposal.voters, 11); // thirteen built-in agents; Mother and the exobiologist do not vote
   assert.equal(byz.out.proposal.quorum, 8); // f = 3 for eleven voters, quorum floor(14 / 2) + 1
 
   const maj = (await run('propose', id, 'again?', '--as', 'engineer', '--strategy', 'majority')).out.proposal;
@@ -263,6 +263,51 @@ test('weighted proposal records Colony performance and health weights in votes a
   assert.equal(vote.out.proposal.status, 'open');
 });
 
+
+test('Mother is available as an evidence-only LLM advisor but cannot debate, vote or take tasks', async () => {
+  const run = await project('mother-advisor');
+  const members = (await run('member', 'list')).out.members;
+  const mother = members.find((member: any) => member.id === 'member_mother');
+  assert.ok(mother);
+  assert.equal(mother.role, 'mother');
+  assert.equal(mother.debateModes, null);
+
+  const rejectedTask = await run('task', 'add', 'Ask Mother to do work', 'Mother only advises', '--role', 'mother');
+  assert.match(rejectedTask.out.error, /does not take tasks/);
+
+  const task = (await run('task', 'add', 'Assess heat risk', 'Review supplied evidence', '--role', 'engineer', '--consensus', '2')).out.task;
+  const next = await run('next', '--as', 'engineer');
+  assert.equal(next.out.advisorChannel.advisorMemberId, 'member_mother');
+  const proposal = (await run('propose', task.id, 'Use evidence-based adaptation', '--as', 'engineer', '--strategy', 'majority')).out.proposal;
+  assert.equal(proposal.voters, 11);
+  assert.equal(proposal.eligibleVoterIds.includes('member_mother'), false);
+  assert.deepEqual(proposal.forumAdvisor, {
+    memberId: 'member_mother',
+    profileId: 'profile_mother',
+    name: 'Mother',
+    role: 'mother',
+    participatesInDiscussion: false,
+    participatesInVoting: false,
+    canBeAsked: true,
+  });
+
+  const ask = await run('mother', 'ask', '--as', 'engineer', '--question', 'Which supplied evidence supports this risk?', '--task', task.id, '--proposal', proposal.id);
+  assert.equal(ask.code, 0);
+  assert.equal(ask.out.request.advisor.outsideDebate, true);
+  assert.equal(ask.out.request.samplingAdvice.temperature, 0);
+  assert.equal(ask.out.request.question, 'Which supplied evidence supports this risk?');
+  assert.equal(ask.out.request.evidence.task.id, task.id);
+  assert.equal(ask.out.request.evidence.proposal.id, proposal.id);
+  assert.match(ask.out.request.responseContract.authority, /Do not debate, vote/);
+  assert.match(ask.out.note, /host to execute with Mother/);
+
+  const position = await run('debate', proposal.id, 'position', '--as', 'reviewer', '--text', 'Keep the test gate');
+  await run('debate', proposal.id, 'reply', '--as', 'tester', '--to', position.out.entry.id, '--text', 'The evidence is incomplete');
+  await run('debate', proposal.id, 'finalize', '--as', 'engineer', '--text', 'Keep the test gate until evidence is complete');
+  const motherVote = await run('vote', proposal.id, '--as', 'member_mother', '--approve', '--reason', 'advice');
+  assert.match(motherVote.out.error, /not an eligible voter/);
+});
+
 test('member sweep expires temporary members and makes their work recoverable', async () => {
   const run = await project('ephemeral-member');
   const created = await run('member', 'add', 'Short-lived helper', '--role', 'custom', '--ephemeral', '--ttl-min', '0.0002'); assert.equal(created.code, 0);
@@ -292,7 +337,7 @@ test('topology prints the graph, finds paths and validates its options', async (
 
   const star = await run('topology');
   assert.equal(star.out.topology.leader, 'member_director');
-  assert.equal(star.out.topology.edges.length, 11);
+  assert.equal(star.out.topology.edges.length, 12);
   assert.equal(star.out.connected, true);
 
   const tree = await run('topology', '--type', 'tree', '--fanout', '2', '--from', 'member_security', '--to', 'member_tester');

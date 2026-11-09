@@ -22,7 +22,7 @@ import type { Claim } from '../coordination/claim-ledger.js';
 import type { AgentRole, ColonyMember, ColonyTask, ConsensusProposal } from '../types.js';
 import { ineligibleReason } from './scoring.js';
 
-export type HealthGroup = 'leadership' | 'research' | 'analysis' | 'delivery' | 'quality';
+export type HealthGroup = 'leadership' | 'research' | 'analysis' | 'delivery' | 'quality' | 'advisory';
 
 export const ROLE_GROUP: Record<AgentRole, HealthGroup> = {
   director: 'leadership',
@@ -37,9 +37,10 @@ export const ROLE_GROUP: Record<AgentRole, HealthGroup> = {
   reviewer: 'quality',
   tester: 'quality',
   custom: 'delivery',
+  mother: 'advisory',
 };
 
-export const HEALTH_GROUPS: readonly HealthGroup[] = ['leadership', 'research', 'analysis', 'delivery', 'quality'];
+export const HEALTH_GROUPS: readonly HealthGroup[] = ['leadership', 'research', 'analysis', 'delivery', 'quality', 'advisory'];
 
 export interface HealthThresholds {
   /** Pending tasks in one group above which it is a bottleneck. Legacy: 10. */

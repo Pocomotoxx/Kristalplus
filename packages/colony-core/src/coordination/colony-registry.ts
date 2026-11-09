@@ -1,4 +1,4 @@
-import { ADVISORY_ROLES, AgentRole, AgentStatus, ColonyMember, ColonyAgentCapabilities } from '../types.js';
+import { ADVISORY_ROLES, NON_ASSIGNABLE_ROLES, AgentRole, AgentStatus, ColonyMember, ColonyAgentCapabilities } from '../types.js';
 import { isEphemeralExpired } from './ephemeral-members.js';
 
 export interface RegisterMemberOptions {
@@ -104,6 +104,8 @@ export class ColonyRegistry {
     requiredCapabilities?: string[];
   }): ColonyMember[] {
     return this.getAllMembers().filter((member) => {
+      // Mother is a virtual advisor only and never owns or receives a task.
+      if (NON_ASSIGNABLE_ROLES.includes(member.role)) return false;
       // Must not be in error or offline status
       if (member.status === 'offline' || member.status === 'error' || isEphemeralExpired(member)) {
         return false;

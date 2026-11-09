@@ -15,14 +15,16 @@ export type AgentRole =
   | 'researcher'
   | 'writer'
   | 'exobiologist'
+  | 'mother'
   | 'custom';
 
 /**
- * Roles that only receive a task when it asks for them by name. Left in the open pool, the
- * auditor would lose its independence by doing ordinary work, and the exobiologist would be handed
- * routine tasks it is not meant for. Neither counts as an implicit candidate in dispatch.
+ * Roles excluded from implicit task selection. Auditor and Exobiologist remain available when
+ * explicitly requested; Mother is advice-only and is excluded from all task dispatch.
  */
-export const ADVISORY_ROLES: readonly AgentRole[] = ['auditor', 'exobiologist'];
+export const ADVISORY_ROLES: readonly AgentRole[] = ['auditor', 'exobiologist', 'mother'];
+/** The Mother advises from supplied evidence and is never assigned work. */
+export const NON_ASSIGNABLE_ROLES: readonly AgentRole[] = ['mother'];
 
 export type ColonySpecialization = 'release-operations' | `domain:${string}`;
 export type DebateMode = 'rational' | 'fact-finding' | 'courtroom' | 'negotiation' | 'quarrel';

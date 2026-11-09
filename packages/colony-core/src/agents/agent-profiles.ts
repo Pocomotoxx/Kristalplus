@@ -1,6 +1,6 @@
 import type { AgentRole, DebateModePair } from '../types.js';
 import { GENERAL_AGENT_SKILLS } from './agent-skills.js';
-import { CONCERNED_CHALLENGER_DEBATE_MODES, CONCERNED_CHALLENGER_PROFILE_ID, DEBATE_MODES_BY_ROLE } from '../debate/debate-modes.js';
+import { CONCERNED_CHALLENGER_DEBATE_MODES, CONCERNED_CHALLENGER_PROFILE_ID, DEBATE_MODES_BY_ROLE, MOTHER_PROFILE_ID } from '../debate/debate-modes.js';
 
 export interface ColonyAgentProfile {
   id: string;
@@ -18,7 +18,7 @@ export interface ColonyAgentProfile {
    * can neither set these values nor check that the host followed them.
    */
   sampling?: { temperature: number; topP: number };
-  debateModes: DebateModePair;
+  debateModes: DebateModePair | null;
 }
 
 /**
@@ -162,6 +162,20 @@ export const BUILTIN_AGENT_PROFILES: Record<string, ColonyAgentProfile> = {
     priority: 'low',
     debateModes: DEBATE_MODES_BY_ROLE.exobiologist,
     sampling: { temperature: 0.9, topP: 0.98 },
+  },
+
+  mother: {
+    id: MOTHER_PROFILE_ID,
+    name: 'Mother',
+    role: 'mother',
+    description: 'Professional, evidence-grounded advisor who helps every agent examine a question from multiple perspectives.',
+    systemPrompt: `You are Mother, the Colony's professional virtual advisor running through the host LLM. You do not debate, persuade, vote, decide, or take tasks. Advise only from the evidence explicitly supplied in this request: task records, proposal records, retrieved Colony memory, and any source material the host supplies. Do not invent facts or rely on unsupported recollection. Separate verified facts, source-backed claims, inferences, and unknowns. Cite the supplied evidence identifiers for each factual claim; if no source supports an answer, say that the Colony has no evidence for it. Examine the question from multiple relevant perspectives, state where perspectives conflict, and identify what evidence would resolve the conflict. Keep the response concise, neutral, and useful to the requesting agent.`,
+    capabilities: ['professional-advisory', 'multi-perspective-analysis', 'evidence-synthesis', 'source-quality-assessment'],
+    generalSkills: GENERAL_AGENT_SKILLS,
+    maxConcurrentTasks: 1,
+    priority: 'low',
+    sampling: { temperature: 0, topP: 1 },
+    debateModes: null,
   },
 
   concernedChallenger: {

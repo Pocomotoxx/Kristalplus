@@ -57,6 +57,9 @@ export class ConsensusEngine {
     if (!rosterMatches(options.eligibleVoterRoles) || !rosterMatches(options.eligibleVoterProfileIds)) {
       throw new Error('frozen voter roles and profile IDs must match the electorate');
     }
+    if (eligibleVoterIds.some((memberId) => options.eligibleVoterRoles[memberId] === 'mother')) {
+      throw new Error('Mother is an advisor and cannot be included in the voting electorate');
+    }
     const knownRoles = new Set(Object.keys(DEBATE_MODES_BY_ROLE));
     if (eligibleVoterIds.some((memberId) => !knownRoles.has(options.eligibleVoterRoles[memberId]))) {
       throw new Error('frozen electorate contains an unknown agent role');

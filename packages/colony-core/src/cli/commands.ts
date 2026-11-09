@@ -31,7 +31,7 @@ class CliError extends Error {
   }
 }
 
-const ROLES: AgentRole[] = ['director', 'architect', 'engineer', 'reviewer', 'tester', 'analyst', 'security', 'auditor', 'researcher', 'writer', 'exobiologist', 'custom'];
+const ROLES: AgentRole[] = ['director', 'architect', 'engineer', 'reviewer', 'tester', 'analyst', 'security', 'auditor', 'researcher', 'writer', 'exobiologist', 'mother', 'custom'];
 
 // Colony-native compatibility roster: 11 built-in Colony roles plus four locally defined support slots.
 const LEGACY_15_SLOTS: Array<{ key: string; role: AgentRole; label: string }> = [
@@ -67,6 +67,7 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   score <taskId>                       rank the members for a task (heuristic weights), with backups and why the others cannot
   member list | member preset standard|legacy-15    add built-ins or 15 offline Colony template slots
   member activate <id>                     activate a legacy-15 template member
+  mother ask --as <agentId> --question <text> [--task id] [--proposal id] [--context text]  request evidence-grounded, multi-perspective advice
   member add <name> --role R [--specializations domain:<slug>,release-operations] [--ephemeral --ttl-min N]   add a member; member sweep expires temporary members
   member sweep                            expire temporary members; transfer claims and requeue unstarted tasks
   next --as <role|memberId>              take the next task for that role (with memory context)
@@ -77,6 +78,7 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   debate <proposalId> position|reply --as <member> --text <text> [--mode rational|fact-finding|courtroom|negotiation|quarrel] [--to <positionId>]
   debate <proposalId> finalize --as <proposerId> --text <final proposal>  (only the concerned challenger profile may select quarrel)
   vote <proposalId> --as <frozenMemberId> (--approve|--reject) --reason <text> [--confidence 0..1]
+                                          Mother appears as a forum advisor; she never enters the discussion or electorate.
   topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
   check                                   run gates BEFORE acting: [--command TEXT] [--text TEXT] [--file PATH [--diff-lines N] [--threshold N]]
                                           [--tool NAME --allow a,b*]; exit 3 on "block". A gate is a check you call, not an interceptor.
@@ -140,7 +142,11 @@ function debateModesForMember(member: ColonyMember) {
   return profileForMember(member)?.debateModes ?? debateModesForAgent(member.role, profileId);
 }
 
-const serializeProposal = (p: { votes: Map<string, unknown> }) => ({ ...p, votes: Array.from(p.votes.values()) });
+const serializeProposal = (p: { votes: Map<string, unknown> }) => ({
+  ...p,
+  votes: Array.from(p.votes.values()),
+  forumAdvisor: { memberId: 'member_mother', profileId: BUILTIN_AGENT_PROFILES.mother.id, name: BUILTIN_AGENT_PROFILES.mother.name, role: 'mother' as const, participatesInDiscussion: false, participatesInVoting: false, canBeAsked: true },
+});
 
 function summarizeTask(t: ColonyTask) {
   const verdict = lastVerdict(t);
@@ -192,6 +198,9 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         to: { type: 'string' },
         'timeout-min': { type: 'string' },
         data: { type: 'string' },
+        question: { type: 'string' },
+        proposal: { type: 'string' },
+        context: { type: 'string' },
         result: { type: 'string' },
         error: { type: 'string' },
         reason: { type: 'string' },
@@ -311,6 +320,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       const [, , title, description] = positionals;
       if (!title || !description) throw new CliError('task add needs a title and a description');
       if (values.role && !ROLES.includes(values.role as AgentRole)) throw new CliError(`unknown role '${values.role}'`);
+      if (values.role === 'mother') throw new CliError('Mother is an advisor and does not take tasks; ask her with `mother ask`');
       if (values.priority && !PRIORITIES.includes(values.priority as TaskPriority)) throw new CliError(`unknown priority '${values.priority}'`);
       const dependencies = values.after ? values.after.split(',').map((s) => s.trim()).filter(Boolean) : [];
       for (const dep of dependencies) {
@@ -383,6 +393,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         // Why the last review sent the work back, so the member knows what to change.
         reviewFeedback: lastVerdict(task) === 'reject' ? { ...task.reviews![task.reviews!.length - 1], round: task.reviewRounds ?? 0, maxRounds: maxRoundsOf(task) } : null,
         member: { id: member.id, role: member.role, specializations: member.capabilities.specializations ?? [], debateModes: debateModesForMember(member) },
+        advisorChannel: { advisorMemberId: 'member_mother', name: BUILTIN_AGENT_PROFILES.mother.name, command: `mother ask --as ${member.id} --task ${task.id} --question <question>`, decisionAuthority: false },
         instructions: profile?.systemPrompt ?? null,
         skillContext: buildTaskSkillContext(profile, member, task),
         // Advice only: the colony cannot set sampling or check that the host followed it.
@@ -627,6 +638,80 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       });
     }
 
+    case 'mother': {
+      if (sub !== 'ask') throw new CliError('usage: mother ask --as <agentId> --question <text> [--task id] [--proposal id] [--context text]');
+      const requester = resolveSingleMember(session, values.as);
+      if (requester.role === 'mother') throw new CliError('Mother cannot ask herself for advice');
+      const rawQuestion = values.question ?? positionals.slice(2).join(' ');
+      if (!rawQuestion.trim()) throw new CliError('mother ask requires --question <text>');
+      const question = prepareDiscussionText(rawQuestion, 'mother question');
+      const task = values.task ? hub.orchestrator.getTask(values.task) : undefined;
+      if (values.task && !task) throw new CliError(`task '${values.task}' not found`);
+      const proposal = values.proposal ? hub.consensus.getProposal(values.proposal) : undefined;
+      if (values.proposal && !proposal) throw new CliError(`proposal '${values.proposal}' not found`);
+      if (task && proposal && proposal.taskId !== task.id) throw new CliError('the task and proposal must belong together');
+      const supplementalContext = values.context ? prepareDiscussionText(values.context, 'mother context') : null;
+      const memoryQuery = [question, task?.title, task?.description, proposal?.topic, proposal?.finalProposal]
+        .filter((part): part is string => Boolean(part)).join(' ');
+      const memory = await hub.codex.search(memoryQuery, { topK: 5, minScore: 0.1 });
+      const profile = BUILTIN_AGENT_PROFILES.mother;
+      const request = {
+        protocol: 'colony.mother.consult.v1',
+        advisor: {
+          memberId: 'member_mother',
+          profileId: profile.id,
+          name: profile.name,
+          role: profile.role,
+          outsideDebate: true,
+          participatesInDiscussion: false,
+          participatesInVoting: false,
+          decisionAuthority: false,
+        },
+        systemPrompt: profile.systemPrompt,
+        samplingAdvice: profile.sampling,
+        requester: { id: requester.id, name: requester.name, role: requester.role },
+        question,
+        evidence: {
+          supplementalContext,
+          task: task ? {
+            id: task.id, title: task.title, description: task.description, status: task.status,
+            requiredCapabilities: task.requiredCapabilities ?? [], inputData: task.inputData ?? null,
+            outputResult: task.outputResult ?? null,
+          } : null,
+          proposal: proposal ? {
+            id: proposal.id, taskId: proposal.taskId, topic: proposal.topic,
+            phase: proposal.phase ?? null, status: proposal.status,
+            discussion: (proposal.discussion ?? []).map((entry) => ({
+              id: entry.id, kind: entry.kind, authorId: entry.authorId, text: entry.text,
+            })),
+            finalProposal: proposal.finalProposal ?? null,
+          } : null,
+          colonyMemory: memory.map((result) => ({
+            sourceId: result.document.id,
+            namespace: result.document.namespace ?? null,
+            text: result.document.text,
+            relevance: result.score,
+          })),
+        },
+        responseContract: {
+          facts: 'Only claims directly supported by evidence.sourceId or explicitly supplied task/proposal fields; cite each source.',
+          perspectives: 'List relevant perspectives separately and explain the evidence each relies on.',
+          inferences: 'Label inferences and assumptions explicitly.',
+          unknowns: 'State unanswered questions and missing evidence; never fill gaps with invented facts.',
+          authority: 'Advice only. Do not debate, vote, approve, reject, or decide for the colony.',
+        },
+      };
+      log('mother.consult.requested', proposal?.id ?? task?.id ?? 'colony', {
+        requesterId: requester.id, taskId: task?.id ?? null, proposalId: proposal?.id ?? null,
+        questionChars: question.length, memorySources: memory.length,
+      });
+      await session.save();
+      return reply({
+        request,
+        note: 'This is an LLM invocation request for the host to execute with Mother. Colony Core does not generate or verify her answer.',
+      });
+    }
+
     case 'member': {
       if (sub === 'list') {
         return reply({ members: hub.registry.getAllMembers().map((m) => ({ id: m.id, name: m.name, role: m.role, status: m.status, profileId: typeof m.metadata?.profileId === 'string' ? m.metadata.profileId : null, tasks: m.currentTaskIds, maxConcurrentTasks: m.capabilities.maxConcurrentTasks, specializations: m.capabilities.specializations ?? [], debateModes: debateModesForMember(m), ...(ephemeralRecord(m) ? { ephemeral: true, expiresAt: ephemeralRecord(m)!.expiresAt } : {}) })) });
@@ -678,6 +763,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         const name = positionals[2] ?? values.name;
         if (!name?.trim()) throw new CliError('member add needs a non-empty name');
         if (!values.role || !ROLES.includes(values.role as AgentRole)) throw new CliError(`--role must be one of ${ROLES.join(', ')}`);
+        if (values.role === 'mother') throw new CliError('Mother is a managed virtual advisor; use `mother ask` instead');
         if (values.ephemeral && values['ttl-min'] === undefined) throw new CliError('--ephemeral requires --ttl-min');
         if (!values.ephemeral && values['ttl-min'] !== undefined) throw new CliError('--ttl-min requires --ephemeral');
         let specializations: ColonySpecialization[];
@@ -967,7 +1053,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       if (!Number.isFinite(timeoutMin) || !(timeoutMin > 0) || !Number.isFinite(timeoutMin * 60_000) || Date.now() + timeoutMin * 60_000 > 8.64e15) throw new CliError('--timeout-min must be a positive finite number within the supported date range');
       // Freeze the electorate and its Chief-derived weights at proposal creation.
       const eligible = hub.registry.getAllMembers().filter((m) =>
-        m.status !== 'offline' && m.status !== 'error' && m.role !== 'exobiologist' && !isEphemeralExpired(m));
+        m.status !== 'offline' && m.status !== 'error' && m.role !== 'exobiologist' && m.role !== 'mother' && !isEphemeralExpired(m));
       const voters = eligible.length;
       if (voters === 0) throw new CliError('cannot open a proposal without active eligible voters');
       const stats = computeMemberStats(hub.registry.getAllMembers(), hub.orchestrator.getAllTasks(), hub.claims.list());
@@ -1022,6 +1108,7 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
       }
       const kind = action as 'position' | 'reply';
       const debateModes = debateModesForMember(author);
+      if (!debateModes) throw new CliError('Mother is an advisor outside the debate; ask her with `mother ask`');
       const mode: DebateMode = values.mode === undefined ? debateModes.default : isDebateMode(values.mode) ? values.mode : 'rational';
       const profileId = typeof author.metadata?.profileId === 'string' ? author.metadata.profileId : null;
       if ((values.mode !== undefined && !isDebateMode(values.mode)) || !canUseDebateMode(author.role, profileId, mode)) {

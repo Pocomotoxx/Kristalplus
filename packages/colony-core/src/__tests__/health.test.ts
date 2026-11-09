@@ -209,8 +209,8 @@ test('health: runs without boot, reports, and validates its options', async () =
   const r = await run('health');
   assert.equal(r.code, 0);
   assert.equal(r.out.report.heuristic, true);
-  assert.equal(r.out.report.metrics.members, 12);
-  assert.equal(r.out.report.groups.length, 5);
+  assert.equal(r.out.report.metrics.members, 13);
+  assert.equal(r.out.report.groups.length, 6);
   assert.match(r.out.note, /heuristic/);
 
   assert.match((await run('health', '--queue-depth=-2')).out.error, /non-negative/);

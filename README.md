@@ -145,3 +145,10 @@ Minden agentprofilnak saját alapértelmezett és alternatív vitamódja van: `r
 #### Általános és feladathoz igazított skillek
 
 Minden agent ugyanazt az általános alapkészletet kapja: kommunikáció, tervezés, bizonyítékértékelés, bizonytalanságkezelés, kockázatfelismerés, ellenőrzés, együttműködés és biztonságos munkavégzés. A feladatspecifikus szakértelem nem állandó agent-szerepként aktiválódik: a `next` válasz csak az adott feladat `requiredCapabilities` mezőjéhez illeszkedő profilképességeket és specializációkat adja át. Ha nincs ilyen megadva, a feladat leírása vezérli az adaptációt, és az agentnek jeleznie kell a feltételezéseit és tudásbeli hézagait.
+
+
+#### Mother: virtuális tanácsadó
+
+A beépített **Mother** virtuális agent a host LLM-rendszerében futó, csak tanácsadó profil. Nem kap feladatot, nem ír vitapozíciót és nem szavaz; a javaslatok fórum-metaadataiban külön tanácsadóként jelenik meg. Az agent a `mother ask --as <agentId> --question <kérdés> [--task <id>] [--proposal <id>]` paranccsal kérhet tőle több nézőpontú, professzionális tanácsot. A kérés a feladatot, javaslatot és releváns Colony-memóriát forrásazonosítókkal adja át, valamint Mother alacsony hőfokú profilját és bizonyíték-központú utasítását.
+
+A Colony Core LLM-független marad: a parancs egy strukturált LLM-kérést ad vissza a hostnak, a host futtatja Mother profilját. Mother csak átadott adatokra támaszkodhat; a tényeket forrással különíti el a következtetésektől, és jelzi a hiányzó bizonyítékot. A válasz tanács, nem döntés vagy automatikusan ellenőrzött tény.

@@ -14,7 +14,7 @@
  * worse" rule is dropped: the score decides.
  */
 
-import { ADVISORY_ROLES } from '../types.js';
+import { ADVISORY_ROLES, NON_ASSIGNABLE_ROLES } from '../types.js';
 import type { AgentStatus, ColonyMember, ColonyTask } from '../types.js';
 import type { MemberStats } from './member-stats.js';
 import { isEphemeralExpired } from '../coordination/ephemeral-members.js';
@@ -73,6 +73,7 @@ const AVAILABILITY: Record<AgentStatus, number> = { idle: 1, voting: 0.5, busy: 
 
 /** Why `member` cannot take `task` right now, or null when it can. Mirrors `ColonyRegistry.findCandidates`. */
 export function ineligibleReason(task: ColonyTask, member: ColonyMember): string | null {
+  if (NON_ASSIGNABLE_ROLES.includes(member.role)) return `${member.name} is an advisor and never takes tasks`;
   if (member.status === 'offline' || member.status === 'error') return `member is ${member.status}`;
   if (isEphemeralExpired(member)) return 'temporary member has expired';
   if (task.requiredRole && member.role !== task.requiredRole) return `role is ${member.role}, the task needs ${task.requiredRole}`;

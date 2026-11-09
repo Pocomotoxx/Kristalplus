@@ -196,3 +196,17 @@ test('InMemoryVectorStore count, delete and clear by namespace', async () => {
   await store.clear('n2');
   assert.equal(await store.count(), 0);
 });
+
+
+test('Mother cannot be frozen into a voter electorate', async () => {
+  const engine = newEngine();
+  await assert.rejects(
+    () => engine.submitProposal({
+      ...base,
+      eligibleVoterIds: ['reviewer', 'member_mother'],
+      eligibleVoterRoles: { reviewer: 'reviewer', member_mother: 'mother' },
+      eligibleVoterProfileIds: { reviewer: null, member_mother: 'profile_mother' },
+    }),
+    /Mother is an advisor and cannot be included/,
+  );
+});
