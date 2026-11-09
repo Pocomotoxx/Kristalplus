@@ -158,14 +158,29 @@ export interface ConsensusProposal<T = unknown> {
   finalProposal?: string;
   /** Fixed weights captured at proposal creation, so later history cannot change its result. */
   voterWeights?: Readonly<Record<string, number>>;
+  /** Host-reported execution-context independence evidence; explicitly not cryptographic attestation. */
+  independenceProof?: IndependenceProof;
   createdAt: number;
   expiresAt: number;
+}
+
+export interface IndependenceProof {
+  voterCount: number;
+  votesReceived: number;
+  distinctExecutionContexts: number;
+  unverifiedVotes: number;
+  identityConfidence: number;
+  status: 'unverified' | 'insufficient' | 'claimed_distinct';
+  evidence: 'host-reported-execution-context';
+  cryptographicAttestation: false;
 }
 
 export interface ConsensusVote {
   voterId: string;
   approve: boolean;
   confidence: number; // 0.0 - 1.0
+  /** Host-reported stable process/session identity for this vote; not independently attested. */
+  executionContextId?: string;
   /** Colony-derived contribution for weighted proposals; other strategies use one vote per member. */
   weight?: number;
   reason?: string;
