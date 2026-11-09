@@ -128,12 +128,27 @@ export interface ConsensusProposal<T = unknown> {
   strategy?: string;
   createdAt: number;
   expiresAt: number;
+  independenceProof?: IndependenceProof;
+}
+
+export interface IndependenceProof {
+  voterCount: number;
+  votesReceived: number;
+  distinctExecutionContexts: number;
+  unverifiedVotes: number;
+  identityConfidence: number;
+  status: 'unverified' | 'insufficient' | 'claimed_distinct';
+  evidence: 'host-reported-execution-context';
+  cryptographicAttestation: false;
 }
 
 export interface ConsensusVote {
   voterId: string;
   approve: boolean;
-  confidence: number; // 0.0 - 1.0
+  /** Validated 0..1 advisory metadata; it does not change the quorum count. */
+  confidence: number;
+  /** Host-reported stable process/session identity; not independently attested. */
+  executionContextId?: string;
   reason?: string;
   timestamp: number;
 }
