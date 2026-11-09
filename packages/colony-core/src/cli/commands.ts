@@ -9,6 +9,7 @@ import { ClaimError } from '../coordination/claim-ledger.js';
 import { resolveInside, SafePathError } from '../safe-path.js';
 import { TASK_KINDS, TaskKind } from '../chief/analysis.js';
 import { lastVerdict, maxRoundsOf, REVIEW_LIMIT_HOLDER, validateMaxRounds } from '../chief/review.js';
+import { parseQuality, rateTask, RateError } from './rate.js';
 import { scanText } from '../injection-scan.js';
 import { REDACT_KINDS, redactText, RedactKind } from '../redact.js';
 import { aggregateDecision, checkDestructive, checkDiffSize, checkSecrets, checkToolAllowed, GateResult } from '../gates.js';
@@ -43,6 +44,7 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   next --as <role|memberId>              take the next task for that role (with memory context)
   done <taskId> --result <text>           complete a task; a real, non-empty result is required
                                           [--quality 0..1] [--verified-by-test]   what you report; the colony learns from it but cannot check it
+  rate <taskId> --quality 0..1            rate a finished task after the fact; the colony memory learns from your rating
   fail <taskId> --error <text>            mark a task failed  [--quality 0..1: how far it got]
   propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous] [--timeout-min M] [--data text]
   topology                                [--type mesh|star|tree|hybrid] [--fanout N] [--degree N] [--from id --to id]
@@ -618,6 +620,18 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         ...result,
         note: 'Patterns find common shapes only. Names, postal addresses and unusual formats pass through; read the result before sending it anywhere. A hash is pseudonymization, not anonymization.',
       });
+    }
+
+    case 'rate': {
+      let rated;
+      try {
+        rated = await rateTask(hub, sub, parseQuality(values.quality));
+      } catch (err) {
+        throw err instanceof Error ? new CliError(err.message) : err;
+      }
+      log('task.rated', rated.id, { quality: rated.quality, status: rated.status });
+      await session.save();
+      return reply({ task: summarizeTask(rated), rated: { quality: rated.quality, note: 'Your rating replaces the one reported at completion in the colony memory.' } });
     }
 
     case 'route': {

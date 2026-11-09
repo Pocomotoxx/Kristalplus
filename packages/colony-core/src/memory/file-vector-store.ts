@@ -1,3 +1,4 @@
+import { writeFileAtomic } from '../atomic-write.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { IVectorStore, MemoryDocument, SearchOptions, SearchResult } from './types.js';
@@ -101,7 +102,7 @@ export class FileVectorStore implements IVectorStore {
       const dir = path.dirname(this.storagePath);
       await fs.mkdir(dir, { recursive: true });
       const serialized = JSON.stringify(Array.from(this.docs.values()), null, 2);
-      await fs.writeFile(this.storagePath, serialized, 'utf-8');
+      await writeFileAtomic(this.storagePath, serialized);
     };
     const next = this.writeChain.then(write, write);
     this.writeChain = next.catch(() => undefined); // a failed write must not block the ones after it

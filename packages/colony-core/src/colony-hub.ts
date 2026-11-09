@@ -51,21 +51,16 @@ export class ColonyHub {
 
     // Wire automatic task completion learning loop
     this.bus.subscribe('task:completed', async (event: ColonyEvent<unknown>) => {
-      const payload = event.payload as { taskId: string; outputResult?: any };
+      const task = this.orchestrator.getTask((event.payload as { taskId: string }).taskId);
+      if (task) await this.guardLearning('reasoning-bank', task.id, () => this.learnPattern(task));
+    });
+    // A later rating replaces what was learned from the unrated report.
+    this.bus.subscribe('task:rated', async (event: ColonyEvent<unknown>) => {
+      const payload = event.payload as { taskId: string; success: boolean };
       const task = this.orchestrator.getTask(payload.taskId);
-      // An unrated result is not a verified success: it stays out of the bank until a quality is reported.
-      if (task && task.outputResult && task.quality !== undefined) {
-        const problem = `${task.title}: ${task.description}`;
-        const solution = typeof task.outputResult === 'string' ? task.outputResult : JSON.stringify(task.outputResult);
-        // What a host reports as its result comes back later as context: hostile text is not stored.
-        if (this.refuseHostile('reasoning-bank', task.id, `${problem}\n${solution}`)) return;
-        await this.reasoningBank.recordPattern({
-          problem,
-          solution,
-          role: task.requiredRole || 'engineer',
-          successScore: task.quality,
-        });
-      }
+      if (!task) return;
+      await this.guardLearning('reasoning-bank', task.id, () => this.learnPattern(task));
+      await this.guardLearning('outcomes', task.id, () => this.recordOutcomeMemory(task, payload.success));
     });
     this.wireRouterLearning();
 
@@ -145,7 +140,7 @@ export class ColonyHub {
       const task = this.orchestrator.getTask(taskId);
       if (!task) return;
       if (task.requiredRole) this.router.recordOutcome(`${task.title} ${task.description}`, task.requiredRole, outcomeReward(success, task.quality));
-      await this.recordOutcomeMemory(task, success);
+      await this.guardLearning('outcomes', task.id, () => this.recordOutcomeMemory(task, success));
     };
     this.bus.subscribe('task:completed', (event: ColonyEvent<unknown>) => learn((event.payload as { taskId: string }).taskId, true));
     this.bus.subscribe('task:failed', (event: ColonyEvent<unknown>) => learn((event.payload as { taskId: string }).taskId, false));
@@ -182,6 +177,35 @@ export class ColonyHub {
         },
       },
     ]);
+  }
+
+  /**
+   * Record a completed, rated result in the reasoning bank. An unrated result is not a verified
+   * success: it stays out until a quality is reported. The id is stable per task, so a rating replaces it.
+   */
+  private async learnPattern(task: ColonyTask): Promise<void> {
+    if (task.status !== 'completed' || !task.outputResult || task.quality === undefined) return;
+    const problem = `${task.title}: ${task.description}`;
+    const solution = typeof task.outputResult === 'string' ? task.outputResult : JSON.stringify(task.outputResult);
+    // What a host reports as its result comes back later as context: hostile text is not stored.
+    if (this.refuseHostile('reasoning-bank', task.id, `${problem}\n${solution}`)) return;
+    await this.reasoningBank.recordPattern({
+      id: `pattern_task_${task.id}`,
+      problem,
+      solution,
+      role: task.requiredRole || 'engineer',
+      successScore: task.quality,
+    });
+  }
+
+  /** Run a learning step; a failure is written to the audit log instead of vanishing in the bus. */
+  private async guardLearning(store: string, taskId: string, step: () => Promise<void>): Promise<void> {
+    try {
+      await step();
+    } catch (err) {
+      const e = err as { name?: string; code?: string };
+      this.audit.append({ type: 'learning.failed', aggregateId: taskId, actor: 'hub', payload: { store, error: e?.name ?? 'Error', code: e?.code ?? null } }, Date.now());
+    }
   }
 
   /** True (and an audit entry) when `text` looks hostile; the caller then stores nothing. */

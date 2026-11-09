@@ -32,8 +32,10 @@ export class ReasoningBank {
     solution: string;
     role: string;
     successScore?: number;
+    /** A stable id makes a later record for the same work replace this one. */
+    id?: string;
   }): Promise<ReasoningPattern> {
-    const id = `pattern_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const id = pattern.id ?? `pattern_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const score = pattern.successScore ?? 1.0;
 
     const patternEntry: ReasoningPattern = {

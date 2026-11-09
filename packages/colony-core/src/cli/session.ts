@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { writeFileAtomic } from '../atomic-write.js';
 import { safeGitText } from '../safe-git.js';
 import { resolveInside, SafePathError } from '../safe-path.js';
 import { ColonyHub } from '../colony-hub.js';
@@ -223,7 +224,7 @@ export class ColonySession {
       router: this.hub.router.snapshot(),
     };
     await fs.mkdir(this.stateDir, { recursive: true });
-    await fs.writeFile(path.join(this.stateDir, LEDGER_FILE), JSON.stringify(ledger, null, 2), 'utf-8');
+    await writeFileAtomic(path.join(this.stateDir, LEDGER_FILE), JSON.stringify(ledger, null, 2));
 
     const fresh = this.hub.audit.snapshot().slice(this.auditPersisted);
     if (fresh.length > 0) {
@@ -322,7 +323,7 @@ export class ColonySession {
     }
     // Always overwrite the boot record, so a BLOCKED boot revokes an earlier successful one.
     await fs.mkdir(stateDir, { recursive: true });
-    await fs.writeFile(path.join(stateDir, BOOT_FILE), JSON.stringify(record, null, 2), 'utf-8');
+    await writeFileAtomic(path.join(stateDir, BOOT_FILE), JSON.stringify(record, null, 2));
     return { record, session, rules: loaded };
   }
 

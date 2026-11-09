@@ -321,6 +321,16 @@ export class ColonyTaskOrchestrator {
     }
   }
 
+  /** Set the quality of a finished task after the fact; the hub relearns from it. */
+  public async rateTask(taskId: string, quality: number): Promise<void> {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Task '${taskId}' not found`);
+    validateQuality(quality);
+    if (task.status !== 'completed' && task.status !== 'failed') throw new Error(`Task '${taskId}' is ${task.status}: only a completed or failed task can be rated`);
+    task.quality = quality;
+    await this.messageBus.publish('task:rated', 'orchestrator', { taskId, success: task.status === 'completed' });
+  }
+
   public async failTask(taskId: string, agentId: string, error: string, report: OutcomeReport = {}): Promise<void> {
     const task = this.tasks.get(taskId);
     if (!task) throw new Error(`Task '${taskId}' not found`);
