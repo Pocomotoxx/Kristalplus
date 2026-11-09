@@ -53,7 +53,8 @@ export class ColonyHub {
     this.bus.subscribe('task:completed', async (event: ColonyEvent<unknown>) => {
       const payload = event.payload as { taskId: string; outputResult?: any };
       const task = this.orchestrator.getTask(payload.taskId);
-      if (task && task.outputResult) {
+      // An unrated result is not a verified success: it stays out of the bank until a quality is reported.
+      if (task && task.outputResult && task.quality !== undefined) {
         const problem = `${task.title}: ${task.description}`;
         const solution = typeof task.outputResult === 'string' ? task.outputResult : JSON.stringify(task.outputResult);
         // What a host reports as its result comes back later as context: hostile text is not stored.
@@ -62,7 +63,7 @@ export class ColonyHub {
           problem,
           solution,
           role: task.requiredRole || 'engineer',
-          successScore: task.quality ?? 1.0,
+          successScore: task.quality,
         });
       }
     });

@@ -90,7 +90,7 @@ export class ReasoningBank {
         problem: meta?.problem || res.document.text,
         solution: meta?.solution || '',
         role: meta?.role || 'unknown',
-        successScore: meta?.score || res.score,
+        successScore: meta?.score ?? res.score, // `||` would turn a reported 0 into the similarity score
         createdAt: res.document.createdAt,
         relevance: res.score,
       });

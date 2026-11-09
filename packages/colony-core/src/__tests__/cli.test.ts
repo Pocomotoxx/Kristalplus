@@ -213,7 +213,7 @@ test('memory add and search round-trip through the file store; completed work is
   assert.equal((await run('memory', 'search', 'x', '--k', '0')).code, 1);
 
   const id = (await run('task', 'add', 'Parse widgets', 'parse the widget feed', '--role', 'engineer')).out.task.id;
-  await run('done', id, '--result', 'widget parser implemented');
+  await run('done', id, '--result', 'widget parser implemented', '--quality', '0.8');
   const learned = await run('memory', 'search', 'Parse widgets: parse the widget feed');
   const entry = learned.out.results.find((r: any) => /widget parser implemented/.test(r.text));
   assert.ok(entry);
