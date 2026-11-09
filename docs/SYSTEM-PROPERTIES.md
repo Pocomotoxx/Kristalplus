@@ -92,4 +92,6 @@ A Colony-képességek Colony-natív megvalósítások. A migráció a módszerta
 ## Korlátok
 
 - A scanner a regexlistáján szereplő gyakori angol és magyar kifejezéseket jelzi; nem szemantikai ellenőrző, ezért más nyelvű, átírt vagy kódolt támadásokat kihagyhat.
+- A kvórumstratégiák a szavazatszámlálást formalizálják; az execution-context azonosítók host által bejelentettek, ezért azok valódi függetlenségét a core nem tudja garantálni.
+
 A Colony koordinál, állapotot tárol és szabályokat ellenőriz; önmagában nem intelligens modell és nem igazságellenőrző szolgáltatás. A következtetések minősége a hosttól, az LLM-től, a bemeneti bizonyítékoktól és a jelentett eredményektől függ. A sampling, a profilutasítások és több minőségi mutató ajánlás vagy heurisztika, nem kikényszerített garancia.
