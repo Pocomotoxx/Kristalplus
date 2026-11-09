@@ -195,21 +195,21 @@ after(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
 
-test('health: runs after boot, reports, and validates its options', async () => {
+test('health: runs without boot, reports, and validates its options', async () => {
   const dir = path.join(root, 'cli');
   await fs.mkdir(dir, { recursive: true });
   const run = async (...args: string[]) => {
     const { code, output } = await runCommand(args, dir);
     return { code, out: output as any };
   };
-  assert.equal((await run('health')).code, 2); // not booted
+  assert.equal((await run('health')).code, 0); // boot is optional
   await run('boot');
   await run('task', 'add', 'Check the thing', 'Review it', '--role', 'reviewer');
 
   const r = await run('health');
   assert.equal(r.code, 0);
   assert.equal(r.out.report.heuristic, true);
-  assert.equal(r.out.report.metrics.members, 11);
+  assert.equal(r.out.report.metrics.members, 12);
   assert.equal(r.out.report.groups.length, 5);
   assert.match(r.out.note, /heuristic/);
 

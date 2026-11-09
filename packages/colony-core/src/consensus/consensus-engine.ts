@@ -72,8 +72,11 @@ export class ConsensusEngine {
       }
       if (Object.values(options.voterWeights).some((weight) => !Number.isFinite(weight) || weight <= 0)) throw new Error('voter weights must be positive finite numbers');
     }
+    const halfWeight = options.strategy === 'weighted'
+      ? Object.values(options.voterWeights!).reduce((sum, weight) => sum + weight, 0) / 2
+      : 0;
     const quorum = options.strategy === 'weighted'
-      ? Object.values(options.voterWeights!).reduce((sum, weight) => sum + weight, 0) / 2 + Number.EPSILON
+      ? halfWeight + Number.EPSILON * Math.max(1, Math.abs(halfWeight))
       : options.strategy ? requiredApprovals(options.strategy, voters) : options.quorum || 2;
     if (options.strategy !== 'weighted' && quorum > voters) {
       throw new Error('quorum cannot exceed the frozen electorate size');

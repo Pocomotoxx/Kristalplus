@@ -104,7 +104,7 @@ test('weighted consensus rejects when remaining possible approval weight misses 
 test('discussion is ordered, replies target positions, and all strategies enforce a frozen electorate', async () => {
   const engine = newEngine();
   const eligibleVoterIds = ['p', 'a', 'b'];
-  const eligibleVoterRoles = Object.fromEntries(eligibleVoterIds.map((id) => [id, 'custom' as const]));
+  const eligibleVoterRoles = Object.fromEntries(eligibleVoterIds.map((id) => [id, id === 'b' ? 'writer' as const : 'custom' as const]));
   const eligibleVoterProfileIds = Object.fromEntries(eligibleVoterIds.map((id) => [id, null]));
   const proposal = await engine.submitProposal({ ...base, eligibleVoterIds, eligibleVoterRoles, eligibleVoterProfileIds });
   await assert.rejects(() => engine.castVote(proposal.id, { voterId: 'a', approve: true }), /discussion is not finalized/);

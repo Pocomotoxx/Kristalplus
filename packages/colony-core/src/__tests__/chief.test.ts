@@ -177,7 +177,7 @@ test('an auditor never gets an unrouted task', async () => {
 
 test('the new profiles exist, are advisory where they should be, and carry sampling advice', () => {
   const roles = Object.values(BUILTIN_AGENT_PROFILES).map((p) => p.role).sort();
-  assert.deepEqual(roles, ['analyst', 'architect', 'auditor', 'director', 'engineer', 'exobiologist', 'researcher', 'reviewer', 'security', 'tester', 'writer']);
+  assert.deepEqual(roles, ['analyst', 'architect', 'auditor', 'auditor', 'director', 'engineer', 'exobiologist', 'researcher', 'reviewer', 'security', 'tester', 'writer']);
   const exo = BUILTIN_AGENT_PROFILES.exobiologist;
   assert.ok(exo.sampling!.temperature >= 0.8);
   assert.ok(BUILTIN_AGENT_PROFILES.analyst.sampling!.temperature <= 0.2);
@@ -227,11 +227,14 @@ test('member preset standard adds the missing roles to an older colony, once', a
   assert.equal((await run('member', 'list')).out.members.length, 6);
 
   const first = await run('member', 'preset', 'standard');
-  assert.deepEqual(first.out.added.sort(), ['member_analyst', 'member_auditor', 'member_exobiologist', 'member_researcher', 'member_writer']);
-  assert.equal(first.out.total, 11);
+  assert.deepEqual(first.out.added.sort(), ['member_analyst', 'member_auditor', 'member_concernedChallenger', 'member_exobiologist', 'member_researcher', 'member_writer']);
+  assert.equal(first.out.total, 12);
   assert.deepEqual((await run('member', 'preset', 'standard')).out.added, []);
-  assert.equal((await run('audit', 'list', '--type', 'member.added')).out.entries.length, 5);
-  assert.match((await run('member', 'preset', 'legacy-15')).out.error, /usage/);
+  assert.equal((await run('audit', 'list', '--type', 'member.added')).out.entries.length, 6);
+  const legacyTemplate = await run('member', 'preset', 'legacy-15');
+  assert.equal(legacyTemplate.code, 0);
+  assert.equal(legacyTemplate.out.added.length, 15);
+  assert.equal(legacyTemplate.out.note.includes('offline'), true);
 });
 
 test('the exobiologist does not vote and is not counted as a voter', async () => {
@@ -239,9 +242,12 @@ test('the exobiologist does not vote and is not counted as a voter', async () =>
   const id = (await run('task', 'add', 'Risky', 'needs review', '--role', 'engineer', '--consensus', '2')).out.task.id;
   await run('next', '--as', 'engineer');
   const p = (await run('propose', id, 'ship?', '--as', 'engineer', '--strategy', 'majority')).out.proposal;
-  assert.equal(p.voters, 10);
+  assert.equal(p.voters, 11);
+  const position = await run('debate', p.id, 'position', '--as', 'reviewer', '--text', 'Keep the test gate');
+  await run('debate', p.id, 'reply', '--as', 'tester', '--to', position.out.entry.id, '--text', 'The evidence is incomplete');
+  await run('debate', p.id, 'finalize', '--as', 'engineer', '--text', 'Keep the test gate until evidence is complete');
   const vote = await run('vote', p.id, '--as', 'exobiologist', '--approve', '--reason', 'why not');
-  assert.match(vote.out.error, /does not vote/);
+  assert.match(vote.out.error, /not an eligible voter/);
 });
 
 test('next carries the sampling advice of the role', async () => {

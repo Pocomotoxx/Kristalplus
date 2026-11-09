@@ -79,7 +79,8 @@ export function ineligibleReason(task: ColonyTask, member: ColonyMember): string
   if (!task.requiredRole && ADVISORY_ROLES.includes(member.role)) return `${member.role} only takes a task that asks for that role`;
   if (member.currentTaskIds.length >= member.capabilities.maxConcurrentTasks) return 'member is at capacity';
   const needed = task.requiredCapabilities ?? [];
-  const missing = needed.filter((c) => !member.capabilities.tools.includes(c) && !member.capabilities.specializations?.includes(c));
+  const missing = needed.filter((c) => !member.capabilities.tools.includes(c)
+    && !member.capabilities.specializations?.some((specialization) => specialization === c));
   if (missing.length > 0) return `missing capabilities: ${missing.join(', ')}`;
   return null;
 }
@@ -90,7 +91,8 @@ function components(task: ColonyTask, member: ColonyMember, stats: MemberStats |
   // Capability: a base of 0.5, +0.3 when the member has exactly the role the task asks for,
   // +0.2 scaled by how much of the required capability list it covers (all of it, once eligible).
   const needed = task.requiredCapabilities ?? [];
-  const covered = needed.length === 0 ? 1 : needed.filter((c) => member.capabilities.tools.includes(c) || member.capabilities.specializations?.includes(c)).length / needed.length;
+  const covered = needed.length === 0 ? 1 : needed.filter((c) => member.capabilities.tools.includes(c)
+    || member.capabilities.specializations?.some((specialization) => specialization === c)).length / needed.length;
   const capability = clamp01(0.5 + (task.requiredRole && member.role === task.requiredRole ? 0.3 : 0) + 0.2 * covered);
 
   const load = clamp01(1 - member.currentTaskIds.length / Math.max(1, member.capabilities.maxConcurrentTasks));

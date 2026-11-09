@@ -51,10 +51,24 @@ test('canStillReach counts only the votes still outstanding', () => {
 // ---- consensus engine with a strategy
 
 const base = { taskId: 't', proposerId: 'p', topic: 'x', data: null };
+const frozenElectorate = (count: number) => {
+  const ids = Array.from({ length: count }, (_, index) => String.fromCharCode(97 + index));
+  return {
+    eligibleVoterIds: ids,
+    eligibleVoterRoles: Object.fromEntries(ids.map((id) => [id, 'custom' as const])),
+    eligibleVoterProfileIds: Object.fromEntries(ids.map((id) => [id, null])),
+  };
+};
+function finalizeForVote(engine: ConsensusEngine, proposal: Awaited<ReturnType<ConsensusEngine['submitProposal']>>) {
+  const position = engine.addDiscussionEntry(proposal.id, { authorId: proposal.eligibleVoterIds![0], kind: 'position', mode: 'rational', text: 'Initial position' });
+  engine.addDiscussionEntry(proposal.id, { authorId: proposal.eligibleVoterIds![1], kind: 'reply', mode: 'rational', replyTo: position.id, text: 'Response' });
+  engine.finalizeDiscussion(proposal.id, proposal.proposerId, 'Final proposal');
+}
 
 test('a strategy derives the quorum and a majority approves at that count', async () => {
   const engine = new ConsensusEngine(new MessageBus());
-  const p = await engine.submitProposal({ ...base, strategy: 'majority', voters: 4 });
+  const p = await engine.submitProposal({ ...base, ...frozenElectorate(4), strategy: 'majority', voters: 4 });
+  finalizeForVote(engine, p);
   assert.equal(p.quorum, 3);
   assert.equal(p.voters, 4);
 
@@ -67,7 +81,8 @@ test('a strategy derives the quorum and a majority approves at that count', asyn
 
 test('with known voters a proposal is rejected as soon as the quorum is out of reach', async () => {
   const engine = new ConsensusEngine(new MessageBus());
-  const p = await engine.submitProposal({ ...base, strategy: 'majority', voters: 4 });
+  const p = await engine.submitProposal({ ...base, ...frozenElectorate(4), strategy: 'majority', voters: 4 });
+  finalizeForVote(engine, p);
 
   await engine.castVote(p.id, { voterId: 'a', approve: false });
   assert.equal(engine.getProposal(p.id)?.status, 'open');
@@ -75,12 +90,14 @@ test('with known voters a proposal is rejected as soon as the quorum is out of r
   assert.equal(engine.getProposal(p.id)?.status, 'rejected');
 });
 
-test('a strategy needs the voter count and excludes an explicit quorum', async () => {
+test('the frozen electorate defines the voter count and a strategy excludes an explicit quorum', async () => {
   const engine = new ConsensusEngine(new MessageBus());
-  await assert.rejects(() => engine.submitProposal({ ...base, strategy: 'majority' }), /eligible voters/);
-  await assert.rejects(() => engine.submitProposal({ ...base, strategy: 'majority', voters: 3, quorum: 2 }), /not both/);
+  await assert.rejects(() => engine.submitProposal({ ...base, ...frozenElectorate(1), strategy: 'majority' }), /at least two unique eligible voter IDs/);
+  await assert.rejects(() => engine.submitProposal({ ...base, ...frozenElectorate(3), strategy: 'majority', voters: 4 }), /voter count must match/);
+  await assert.rejects(() => engine.submitProposal({ ...base, ...frozenElectorate(3), strategy: 'majority', voters: 3, quorum: 2 }), /not both/);
 
-  const p = await engine.submitProposal({ ...base, strategy: 'unanimous', voters: 2 });
+  const p = await engine.submitProposal({ ...base, ...frozenElectorate(2), strategy: 'unanimous', voters: 2 });
+  finalizeForVote(engine, p);
   await engine.castVote(p.id, { voterId: 'a', approve: true });
   await engine.castVote(p.id, { voterId: 'b', approve: true });
   assert.equal(engine.getProposal(p.id)?.status, 'approved');
@@ -89,7 +106,7 @@ test('a strategy needs the voter count and excludes an explicit quorum', async (
 
 test('strategy and voters survive snapshot and restore', async () => {
   const engine = new ConsensusEngine(new MessageBus());
-  const p = await engine.submitProposal({ ...base, strategy: 'byzantine', voters: 7 });
+  const p = await engine.submitProposal({ ...base, ...frozenElectorate(7), strategy: 'byzantine', voters: 7 });
   const copy = new ConsensusEngine(new MessageBus());
   copy.restore(JSON.parse(JSON.stringify(engine.snapshot())));
   const restored = copy.getProposal(p.id);

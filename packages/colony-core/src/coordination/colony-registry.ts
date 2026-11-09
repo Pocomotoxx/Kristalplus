@@ -128,7 +128,7 @@ export class ColonyRegistry {
       if (requirements.requiredCapabilities && requirements.requiredCapabilities.length > 0) {
         const hasAllCapabilities = requirements.requiredCapabilities.every((cap) =>
           member.capabilities.tools.includes(cap) ||
-          member.capabilities.specializations?.includes(cap)
+          member.capabilities.specializations?.some((specialization) => specialization === cap)
         );
         if (!hasAllCapabilities) return false;
       }

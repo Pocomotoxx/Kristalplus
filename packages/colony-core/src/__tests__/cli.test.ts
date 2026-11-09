@@ -250,7 +250,8 @@ test('weighted proposal records Colony performance and health weights in votes a
   const proposal = (await run('propose', id, 'accept?', '--as', 'engineer', '--strategy', 'weighted')).out.proposal;
   assert.equal(proposal.strategy, 'weighted');
   assert.equal(Object.keys(proposal.voterWeights).length, proposal.voters);
-  assert.ok(proposal.quorum > Object.values(proposal.voterWeights).reduce((a: number, b: number) => a + b, 0) / 2);
+  const recordedWeight = Object.values(proposal.voterWeights as Record<string, number>).reduce((a, b) => a + b, 0);
+  assert.ok(proposal.quorum > recordedWeight / 2);
   const position = await run('debate', proposal.id, 'position', '--as', 'reviewer', '--text', 'The criteria are met');
   await run('debate', proposal.id, 'reply', '--as', 'tester', '--to', position.out.entry.id, '--text', 'The test evidence agrees');
   await run('debate', proposal.id, 'finalize', '--as', 'engineer', '--text', 'Accept with the recorded safeguards');
@@ -291,7 +292,7 @@ test('topology prints the graph, finds paths and validates its options', async (
 
   const star = await run('topology');
   assert.equal(star.out.topology.leader, 'member_director');
-  assert.equal(star.out.topology.edges.length, 10);
+  assert.equal(star.out.topology.edges.length, 11);
   assert.equal(star.out.connected, true);
 
   const tree = await run('topology', '--type', 'tree', '--fanout', '2', '--from', 'member_security', '--to', 'member_tester');
