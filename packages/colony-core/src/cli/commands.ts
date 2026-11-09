@@ -3,13 +3,14 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { BUILTIN_AGENT_PROFILES } from '../agents/agent-profiles.js';
 import type { AgentRole, ColonyMember, ColonyTask, TaskPriority } from '../types.js';
-import { ColonySession, loadRules, resolveRevision } from './session.js';
+import { ColonySession, loadRules, resolveRevision, STATE_DIR } from './session.js';
 import { QUORUM_STRATEGIES, QuorumStrategy } from '../consensus/strategies.js';
 import { ClaimError } from '../coordination/claim-ledger.js';
 import { resolveInside, SafePathError } from '../safe-path.js';
 import { TASK_KINDS, TaskKind } from '../chief/analysis.js';
 import { lastVerdict, maxRoundsOf, REVIEW_LIMIT_HOLDER, validateMaxRounds } from '../chief/review.js';
 import { parseQuality, rateTask, RateError } from './rate.js';
+import { runProfile } from './profile-command.js';
 import { scanText } from '../injection-scan.js';
 import { REDACT_KINDS, redactText, RedactKind } from '../redact.js';
 import { aggregateDecision, checkDestructive, checkDiffSize, checkSecrets, checkToolAllowed, GateResult } from '../gates.js';
@@ -44,6 +45,9 @@ export const USAGE = `colony <command> [options]    (every command prints JSON; 
   next --as <role|memberId>              take the next task for that role (with memory context)
   done <taskId> --result <text>           complete a task; a real, non-empty result is required
                                           [--quality 0..1] [--verified-by-test]   what you report; the colony learns from it but cannot check it
+  profile interview [--section S]         the next question of the developer profile (fixed questions, skippable)
+  profile answer <questionId> <value>     [--skip = no preference]   store an answer; returns the next question
+  profile show | profile reset            your answers so far / start over
   rate <taskId> --quality 0..1            rate a finished task after the fact; the colony memory learns from your rating
   fail <taskId> --error <text>            mark a task failed  [--quality 0..1: how far it got]
   propose <taskId> <topic> --as <member>  [--quorum N | --strategy majority|supermajority|byzantine|unanimous] [--timeout-min M] [--data text]
@@ -165,6 +169,8 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         reject: { type: 'boolean' },
         ns: { type: 'string' },
         k: { type: 'string' },
+        section: { type: 'string' },
+        skip: { type: 'boolean' },
         help: { type: 'boolean' },
       },
     });
@@ -620,6 +626,21 @@ async function dispatch(argv: string[], cwd: string): Promise<CommandResult> {
         ...result,
         note: 'Patterns find common shapes only. Names, postal addresses and unusual formats pass through; read the result before sending it anywhere. A hash is pseudonymization, not anonymization.',
       });
+    }
+
+    case 'profile': {
+      let result;
+      try {
+        result = await runProfile({ file: path.join(dir, STATE_DIR, 'profile.json'), sub, args: positionals.slice(2), section: values.section, skip: Boolean(values.skip), now: Date.now() });
+      } catch (err) {
+        throw err instanceof Error ? new CliError(err.message) : err;
+      }
+      warnings.push(...result.warnings);
+      if (result.changed) {
+        log(`profile.${result.changed.action}`, result.changed.id ?? 'profile');
+        await session.save();
+      }
+      return reply(result.output);
     }
 
     case 'rate': {
