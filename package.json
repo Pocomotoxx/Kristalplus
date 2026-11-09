@@ -1,7 +1,7 @@
 {
   "name": "kristalplus",
   "private": true,
-  "description": "Colony: host-driven, model-independent colony core. The old Colony code lives under legacy/colony.",
+  "description": "Colony: host-driven, model-independent colony core.",
   "scripts": {
     "build": "pnpm --dir packages/colony-core build",
     "test": "pnpm --dir packages/colony-core build && pnpm --dir packages/colony-core test"

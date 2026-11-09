@@ -2,7 +2,7 @@
 
 Modellfüggetlen **Colony-mag** TypeScriptben. Nem hív LLM-et és nem kér API-kulcsot: a **host** (például a Cowork) maga a modell, a Colony pedig a főkönyve. Egy paranccsal (`colony boot`) betölti a rendszert, utána a host parancsokon keresztül dolgozik: feladatot vesz fel, kér, teljesít, szavaz, és a Colony vektoros memóriájába ír. Az állapot a repóban él (`.colony/`).
 
-> **Állapot: átmenet alatt.** A projekt egy korábbi, rajalapú architektúrából indult, amely már csak inspirációs alap. Az új mag a [`packages/colony-core`](packages/colony-core). A régi kód a [`legacy/colony`](legacy/README.md) mappába került: befagyasztva, build és CI nélkül, és fokozatosan lesz átvéve vagy kivezetve. Részletek: [docs/COLONY-MIGRATION.md](docs/COLONY-MIGRATION.md) és [plant.md](plant.md).
+> **Állapot:** a projekt egy korábbi, rajalapú architektúrából indult, amelynek kódja már nincs a repóban. Az aktív mag a [`packages/colony-core`](packages/colony-core). A hátralévő munka terve: [plant.md](plant.md) és [docs/QUEEN-PORT-PLAN.md](docs/QUEEN-PORT-PLAN.md).
 
 ## Fogalmak
 
@@ -107,8 +107,6 @@ packages/colony-core/      az új mag (TypeScript, ESM, strict)
 START_HERE.md              indítóutasítás hostoknak
 AGENTS.md                  rövid belépő hostoknak
 plant.md                   migrációs terv
-docs/COLONY-MIGRATION.md   migrációs térkép és hátralévő munka
-legacy/colony/             a régi kód, befagyasztva (lásd legacy/README.md)
 ```
 
 A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
@@ -120,9 +118,7 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
 - A beépített tagok (11 szerep) fixek; a `member preset standard` csak pótolja a hiányzókat. Egyedi tag felvétele és az ideiglenes tagok még nincsenek (P9 a [tervben](docs/QUEEN-PORT-PLAN.md)).
 - A `plant.md` V. és VI. fázisa nincs leírva, és nincs bennük kész kód.
-- A `legacy/colony` mappából még nem döntöttük el, melyik plugin és csomag kerül át a Colonyba, és melyik törlendő.
-- A régi Colony `LICENSE` fájlja nincs a másolatban (lásd [legacy/README.md](legacy/README.md)).
 
 ## Eredet és licenc
 
-A repó a `legacy/colony` mappában még tartalmazza a korábbi, rajalapú rendszer kódját. Az átvett részek licencfeltételeit a végleges kivezetés előtt ellenőrizni kell. A `colony-core` saját, újraírt kód.
+A `colony-core` saját, újraírt kód.

@@ -1,6 +1,6 @@
 # A swarm-koordinátorok átemelésének terve (Colony Chief)
 
-Állapot: 2026-11-01, átírva a 10 szerepes ügynökrendszer szerint. Terv, kód még nincs. Forrás: `legacy/colony/v3/@colony/swarm/src/` (kb. 7400 sor a hat nagy fájlban) és a felhasználó ügynökrendszer-terve.
+Állapot: 2026-11-01, átírva a 10 szerepes ügynökrendszer szerint. Terv, kód még nincs. Forrás: a régi rajkoordinátor (kb. 7400 sor a hat nagy fájlban, már nincs a repóban) és a felhasználó ügynökrendszer-terve.
 
 ## Mit olvastam el, és mit nem
 

@@ -1,6 +1,6 @@
 # Migrációs és Átalakítási Terv: Kristalplus -> Colony
 
-> **Frissítés (2026-10-31):** a terv eredeti LLM-es elemei kivezetve. A 3. alapelv (provider-agnosztikus LLM-interfészek), a 4.3 (`ColonyWorker`) és a teljes VII. fázis (`providers.ts`, `github-runner.ts`, GitHub Actions workflow) már nincs a kódban. A host (Cowork) maga a modell, a mag csak főkönyv, szavazás és helyi memória. Az aktuális állapot: [docs/COLONY-MIGRATION.md](docs/COLONY-MIGRATION.md). Az alábbi szöveg történeti terv.
+> **Frissítés (2026-10-31):** a terv eredeti LLM-es elemei kivezetve. A 3. alapelv (provider-agnosztikus LLM-interfészek), a 4.3 (`ColonyWorker`) és a teljes VII. fázis (`providers.ts`, `github-runner.ts`, GitHub Actions workflow) már nincs a kódban. A host (Cowork) maga a modell, a mag csak főkönyv, szavazás és helyi memória.
 
 ## 1. Áttekintés és Célok
 
