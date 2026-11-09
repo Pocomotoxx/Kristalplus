@@ -178,7 +178,8 @@ export interface IndependenceProof {
 export interface ConsensusVote {
   voterId: string;
   approve: boolean;
-  confidence: number; // 0.0 - 1.0
+  /** Validated 0..1 advisory metadata; it does not change the quorum count. */
+  confidence: number;
   /** Host-reported stable process/session identity for this vote; not independently attested. */
   executionContextId?: string;
   /** Colony-derived contribution for weighted proposals; other strategies use one vote per member. */
