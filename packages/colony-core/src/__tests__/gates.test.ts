@@ -94,10 +94,11 @@ const run = async (...args: string[]) => {
   return { code, out: output as any };
 };
 
-test('check needs something to check, and runs only after boot', async () => {
+test('check needs something to check, and can run without boot', async () => {
   assert.match((await run('check')).out.error, /at least one of/);
   const fresh = await runCommand(['check', '--command', 'ls'], path.join(root, 'unbooted'));
-  assert.equal(fresh.code, 2);
+  assert.equal(fresh.code, 0);
+  assert.equal((fresh.output as any).decision, 'allow');
 });
 
 test('check: allow, require-confirmation, and block with exit 3', async () => {

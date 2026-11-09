@@ -50,8 +50,8 @@ export function tokenize(text: string): string[] {
 }
 
 /**
- * Mixture of Experts (MoE) Task Router
- * Dynamically classifies input tasks and selects the best specialist agent.
+ * Keyword-based, online-learning task router.
+ * Scores explicit keyword and regex rules, then selects the best matching specialist role.
  *
  * Keyword and pattern rules give the base score. On top of that the router learns from outcomes:
  * every `recordOutcome` nudges the weight of each word of the task towards or away from the role
@@ -65,37 +65,37 @@ export class MoERouter {
   private rules: RoutingRule[] = [
     {
       role: 'security',
-      keywords: ['vulnerability', 'cve', 'security', 'auth', 'sanitize', 'injection', 'permission', 'token', 'exploit'],
+      keywords: ['vulnerability', 'cve', 'security', 'auth', 'sanitize', 'injection', 'permission', 'token', 'exploit', 'sebezhetőség', 'sérülékenység', 'biztonság', 'hitelesítés', 'jogosultság', 'befecskendezés', 'kihasználás', 'védelem'],
       patterns: [/secur(e|ity)/i, /vulnerab/i, /cve-\d+/i, /auth(enticat|oriz)/i],
       baseWeight: 1.2, // Higher sensitivity for security topics
     },
     {
       role: 'architect',
-      keywords: ['architecture', 'design', 'spec', 'ddd', 'pattern', 'structure', 'boundary', 'modular', 'system'],
+      keywords: ['architecture', 'design', 'spec', 'ddd', 'pattern', 'structure', 'boundary', 'modular', 'system', 'architektúra', 'tervezés', 'specifikáció', 'rendszerterv', 'szerkezet', 'határ', 'modularitás', 'interfész'],
       patterns: [/architect/i, /system design/i, /spec(ification)?/i, /interfac(e|es)/i],
       baseWeight: 1.0,
     },
     {
       role: 'tester',
-      keywords: ['test', 'qa', 'e2e', 'unit test', 'coverage', 'benchmark', 'assert', 'mock', 'fuzz'],
+      keywords: ['test', 'qa', 'e2e', 'unit test', 'coverage', 'benchmark', 'assert', 'mock', 'fuzz', 'teszt', 'tesztelés', 'lefedettség', 'mérés', 'próba', 'ellenőrzőteszt'],
       patterns: [/test(ing|s)?/i, /qa/i, /benchmark/i, /assert/i],
       baseWeight: 1.0,
     },
     {
       role: 'reviewer',
-      keywords: ['review', 'audit', 'evaluate', 'inspect', 'lint', 'pr', 'code review', 'check'],
+      keywords: ['review', 'audit', 'evaluate', 'inspect', 'lint', 'pr', 'code review', 'check', 'felülvizsgálat', 'auditálás', 'átvizsgálás', 'kódellenőrzés', 'ellenőrzés', 'értékelés'],
       patterns: [/review/i, /audit/i, /inspect/i, /code review/i],
       baseWeight: 1.0,
     },
     {
       role: 'engineer',
-      keywords: ['implement', 'code', 'build', 'create', 'refactor', 'fix', 'bug', 'typescript', 'esm', 'function', 'class'],
+      keywords: ['implement', 'code', 'build', 'create', 'refactor', 'fix', 'bug', 'typescript', 'esm', 'function', 'class', 'implementáció', 'megvalósítás', 'kód', 'fejlesztés', 'refaktorálás', 'javítás', 'hiba', 'függvény', 'osztály'],
       patterns: [/implement/i, /code/i, /build/i, /refactor/i, /develop/i],
       baseWeight: 1.0,
     },
     {
       role: 'director',
-      keywords: ['plan', 'roadmap', 'milestone', 'strategy', 'goal', 'supervise', 'coordinate', 'project'],
+      keywords: ['plan', 'roadmap', 'milestone', 'strategy', 'goal', 'supervise', 'coordinate', 'project', 'terv', 'ütemterv', 'mérföldkő', 'stratégia', 'cél', 'felügyelet', 'koordináció', 'projekt', 'feladatbontás', 'delegálás'],
       patterns: [/plan/i, /roadmap/i, /strategy/i, /coordinat/i],
       baseWeight: 0.9,
     },

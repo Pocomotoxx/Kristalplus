@@ -49,7 +49,7 @@ A beépített tagok így 6-ról 11-re nőnek (`director`, `architect`, `engineer
 
 ## Fázisok
 
-> **Állapot:** a P0–P6 kész (2026-11-01), 248 teszt zöld. Az eredmények a fázisok szakaszainak végén.
+> **Állapot:** a P0–P6 és P8 megvalósítva; a P7 súlyozott szavazási része kész, a Chief override, a P9 `legacy-15` sablonja és P11 még hátra van. A P8 Colony-native, modellhívás nélküli szintézis; részletei alább.
 
 ### P0 – Előkészítés (kicsi, kód nélkül)
 
@@ -127,23 +127,31 @@ A terv szerint a Deputy a Chief döntéseit auditálja: célcsúszás, végtelen
 
 **P6 eredménye (kész):** `chief/review.ts`, `colony review`, `task add --review [--max-review-rounds N]`, `ColonyTask.reviewRequired/maxReviewRounds/reviewRounds/reviews`, `ColonyTaskOrchestrator.recordReview`. **Szabályok:** csak `reviewer` szerepű tag értékelhet; az nem, aki a feladatot tartja (a függetlenség minimuma); csak `in_progress` vagy `review` állapotú munka értékelhető; indoklás kötelező (redaktálva, 300 karakterre vágva tárolódik, az auditnaplóba csak a hossza és a verdikt kerül). Az elutasítás `in_progress`-be küldi vissza, és számol egy kört; a limit (alapérték 3) elérésekor a feladat tartásba kerül (`review-limit` a tartó), az auditnaplóban `task.held`. A lezárás blokkolva van, ha a legutóbbi verdikt elutasítás (a nem kért értékelésnél is), vagy ha az értékelés kötelező és nincs jóváhagyás; a `fail` mindig lehetséges. **Friss körszám:** ha a felhasználó (a host jelentése szerint) feloldja a review-limit tartását, a körszám nullázódik; más tartás feloldása nem nullázza. A `next` kimenete (`reviewFeedback`) mutatja az utolsó elutasítás indoklását. **Őszinte korlát:** ha ugyanaz a modell írta a munkát és értékeli is, az értékelés ugyanazokat a vakfoltokat örökli; a jóváhagyás nem tesztredmény. Egy egyszerűsítés: nincs külön „beküldöm értékelésre" parancs, az értékelő a futó munkát bírálja; ha ez kell, a `submit` kis kiegészítés.
 
-### P7 – Két hiányzó szavazási mód
+### P7 – Chief override és auditált vitafolyam
 
-- **`weighted`:** a szavazat súlya = a tag teljesítménye × egészsége (a régi képlet). A régi kódban ez sokáig hatástalan volt (a súlyok sosem jutottak el a számláláshoz, minden súlyozott döntés sima többség lett; egy 2026-os javítás hozta rendbe). Itt a súly a szavazat leadásakor kerül a szavazatba és az auditnaplóba, a számlálás tesztelve van arra, hogy a súly valóban számít.
-- **`chief-override`:** egyoldalú döntés, csak három típusra (vészhelyzeti művelet, tag leállítása, prioritás-felülbírálat). **Hatalom, nem szavazás**, ezért: csak `director` szerepű tag hívhatja, indoklás kötelező, mindig az auditnaplóba kerül, a `status` külön jelzi, és **a Deputy utólag megjelöli** (`watch` jelez, ha nincs átnézése). A felhasználó a végső döntő; a P5 tartása felülírhatja a következményeit.
-- A `propose` kiterjesztése; tesztek a súlyozott kvórumra és a visszaélésre (nem `director`, hiányzó indoklás, nem engedett típus).
+- **Auditált vita és rögzített választói kör – megvalósítva:** a `propose` kezdetben `discussion` fázist nyit; `debate <id> position|reply --text ...` rögzíti az álláspontokat és a korábbi álláspontra adott válaszokat, a `debate <id> finalize --text ...` lezárja a vitát. Legalább két aktív választó, egy álláspont és egy másik tag válasza kell a véglegesítéshez; tagonként egy álláspont és célálláspontonként egy válasz van, legfeljebb 60 bejegyzéssel. Szavazni csak ezután lehet. Az aktív, nem `exobiologist` tagok azonosítói a létrehozáskor befagynak; minden stratégiánál ugyanazt a listát ellenőrzi a mag. A vita és végleges szöveg az auditnaplóba kerül. A vitakör rövid: legfeljebb 60 bejegyzés, egy bejegyzés 4000 karakter.
+- **`weighted` – megvalósítva:** a javaslat létrehozásakor rögzített szavazati súly = a főkönyvből számolt teljesítmény × egészség. A teljesítmény a jelentett sikerarány (a jelentett minőség 30%-os részével, ha van ilyen); az egészség az elavult foglalásokból számolt heurisztika. A szavazat, az auditnapló és a proposal a súlyt együtt tárolja. A jóváhagyáshoz a támogató összsúly több mint fele kell; ha a hátralévő szavazók összsúlya sem érheti el, elutasítjuk. Ez determinisztikus, de a teljesítmény bemenete a host által jelentett.
+- **`chief-override` – hátra van:** egyoldalú döntés, csak három típusra (vészhelyzeti művelet, tag leállítása, prioritás-felülbírálat). **Hatalom, nem szavazás**, ezért: csak `director` szerepű tag hívhatja, indoklás kötelező, mindig az auditnaplóba kerül, a `status` külön jelzi, és **a Deputy utólag megjelöli** (`watch` jelez, ha nincs átnézése). A felhasználó a végső döntő; a P5 tartása felülírhatja a következményeit.
+- A `chief-override` külön, engedélyezett műveletekként marad hátra; csak director, kötelező indoklás és Deputy utóellenőrzés. A vita, rögzített választói kör és súlyozott kvórum elkészült.
 
-### P8 – Több tag kimenetének összegzése (az attention-coordinator maradéka)
+### Képesség-specializációk (Colony-native)
 
-- A régi fájl hat figyelemmechanizmust kínál (multi-head, flash, linear, hyperbolic, moe, graph-rope). A saját fejléce szerint a flash gyorsulása „unverified". 10–15 tagnál a pontos softmax-figyelem triviálisan gyors, a közelítések nem adnak semmit.
-- Átvesszük a lényeget: `colony synthesize <feladat>`: több jelentésből kiválasztja a „középsőt" (amelyik a többihez a leghasonlóbb), megadja az egyetértési pontot és a kilógókat. A régi `neural/utils/self-consistency.ts` (134 sor) ide illik, azt is át kell nézni.
-- **Korlát:** a hasonlóság szóegyezést mér, nem jelentést. A kimenet jelzi.
-- Kimarad: flash, linear, hyperbolic, graph-rope.
+A `custom` szerephez a tag felvételekor adható `--specializations domain:<slug>,release-operations`. A domain-címke tetszőleges, normalizált területet jelöl (például `domain:payments`); a `release-operations` a kiadási/üzemeltetési képességcsomag. A feladat `--capabilities` kapcsolója ugyanazokra a címkékre szűr. Ezek képességek, nem új szerepkörök, és a registry a kiosztásnál ellenőrzi őket.
+
+### P8 – Több tag kimenetének szintézise
+
+Állapot: **megvalósítva** a `chief/synthesis.ts` modulban és a `synthesize <taskId>` CLI-parancsban.
+
+A Colony a megadott szülőfeladat közvetlen, lezárt részfeladatainak jelentéseit veszi figyelembe. Jaccard-tokenhasonlósággal kiválasztja a többi jelentéshez legközelebb eső medoidot, felsorolja a jelentések legalább 60%-ában előforduló kifejezéseket, és megjelöli a 0,2 alatti hasonlóságú kilógókat. Az eredmény legfeljebb 4000 karaktert mutat forrásonként, és megőrzi a feladatazonosítót, a címet, valamint a jelentő tag azonosítóját.
+
+Ez saját, determinisztikus Colony-megvalósítás; a régi figyelem- vagy self-consistency-kódot nem másolja, és nem hív modellt. A hasonlóság szóalapú, nem szemantikus, nem méri a helyességet. A Colony bizonyítékcsomagot ad; a host írja meg a végső narratív összegzést és ellenőrzi a forrásokat.
+
+A tiszta szintézismodul 3 egységtesztje lefutott; a teljes csomag buildje és a CLI-integrációs teszt ebben a környezetben még nincs ellenőrizve.
 
 ### P9 – Ideiglenes tagok és sablonok (a federation-hub használható része)
 
-- `colony member add --ephemeral --ttl-min N`: az al-munkamenet (alügynök) ideiglenes tagja lejárattal; `member sweep` leveszi, a feladata a foglalás-elavulás útján átvehetővé válik. A régi `setInterval`-os takarítás és `Math.random()` azonosító helyett kifejezett söprés és determinisztikus azonosító.
-- `colony member preset <név>`: a hiányzó beépített tagok pótlása a 10 szereplistára (`standard`), és egy opcionális, régi **15 ügynökös** sablon (`legacy-15`), amely a tagokat `offline` állapotban hozza létre (az `offline` tag nem szavaz és nem kap feladatot, amíg egy host be nem jelentkezik helyette).
+- **Ideiglenes tag – megvalósítva:** `colony member add <név> --role R --ephemeral --ttl-min N`; a lejárat az állapotban tárolódik, nincs háttér-időzítő. A `member sweep` a tagot offline jelöli, a nyitott foglalásait azonnal átvehetővé teszi, az el nem kezdett hozzárendelést újra a sorba teszi. A tag és a feladatai az előzmények megőrzése miatt nem törlődnek. A kiosztás és a claim átvétele kizárja a lejárt tagot.
+- **Sablon – megvalósítva:** `member preset legacy-15` 15 Colony-taghelyet hoz létre (a 11 beépített szerepkör és négy Colony-saját `custom` támogatói hely alapján). A tagok offline állapotúak; a host a `member activate <id>` paranccsal kapcsolhatja be őket. A név, a profil és a feladatkezelés Colony-native; legacy kódot nem másol. A parancs idempotens, az aktiválás és a sablonbővítés auditált.
 - A `broadcast`, `selectOptimalSwarm` és a föderációs szavazás hálózati/több telepítéses: P10.
 
 ### P11 – Anomália-sor és Exobiológus
@@ -197,7 +205,7 @@ Hálózat nélkül csak git-alapú csomagcsere lehet (hash-ellenőrzött export 
 | P10 | P9 | külön terv | – |
 | P11 | P1, P5, P6 | ~450 sor + tesztek | közepes (a hipotézisek minősége, a `cold` keresés számlálója a tárban) |
 
-Ajánlott menet: P0 → P1 → P2 → P4 → P3 → P5 → P6 → **P11** → P7 → P8 → P9. Mindegyik külön commit, tesztekkel és a README, migrációs térkép és leltár frissítésével, ahogy eddig.
+Ajánlott menet innen: P7 (súlyozott szavazás és Chief override) → P9 (ideiglenes tagok) → P11 (anomália-életút). Az átültetés másik csomagterületeit a leltár szerint kell sorra venni.
 
 ## Döntések
 
@@ -213,3 +221,34 @@ Ajánlott menet: P0 → P1 → P2 → P4 → P3 → P5 → P6 → **P11** → P7
 ## Nyitott pont
 
 - A 10 szerepre való összevonás (Scraper + Cleansing + Deep Research egy `researcher`; Synthesis a Chief-nél; a Budget kimarad) az én javaslatom a terv alapján. Ha külön szerepként kell valamelyik, a P1-et érinti.
+
+
+## Vitafajták és az aggodalmaskodó kritikus
+
+Minden agentprofil két, előre rögzített vitafajtát kap: egy alapértelmezettet és egy alternatívát. A `debate` parancs alapból az agent alapértelmezett formáját használja; a `--mode` kapcsolóval az alternatív választható. A kolónia ezt a profilonkénti engedélylistát futásidőben is ellenőrzi.
+
+| Vitamód | Mire való |
+|---|---|
+| `rational` | Bizonyítékok és kritikus érvek mérlegelése |
+| `fact-finding` | Tényállítások és bizonyítékok ellenőrzése |
+| `courtroom` | Álláspontok rendezett bemutatása és keresztkérdések |
+| `negotiation` | Elfogadható kompromisszum kidolgozása |
+| `quarrel` | Heves, adverszárius állítás- és kockázatpróba |
+
+Az egyetlen „Aggodalmaskodó kritikus” profil magas hőfokkal (`temperature: 1.0`) és `topP: 0.99` mintavételezési javaslattal működik. Alapmódja a `quarrel`, alternatívája a `courtroom`. A heves mód az állításokat, kockázati láncokat és bizonyítékhiányokat támadja; személyeskedés, fenyegetés és megfélemlítés nem része a módszernek. A többi agent profilja nem választhatja ezt a módot.
+
+
+## Általános agent skillek és feladathoz igazítás
+
+Minden built-in agent azonos általános skilleket kap: világos kommunikáció, strukturált tervezés, bizonyítékértékelés, bizonytalanság kezelése, kockázatfelismerés, feladathoz kötött tanulás, minőségellenőrzés, együttműködés és biztonságos munkavégzés.
+
+A domain- és szerepspecifikus tudás nem állandó viselkedési utasításként kerül az agenthez. A `next` minden kiosztásnál az adott feladat leírásából és `requiredCapabilities` értékeiből épít `skillContext`-et. Csak a kért képességekhez egyező profilképességek és tag-specializációk aktiválódnak. Ha a feladat nem kér megnevezett szaktudást, a host agent a feladat leírásából igazítja hozzá a tudást, és jelzi a feltételezéseket vagy hiányokat. A Colony Core ezt a prompt-környezetet adja át; maga nem tölt le modellt vagy külső tudásbázist.
+
+
+## Mother — virtuális, nem döntéshozó tanácsadó
+
+A beépített `mother` szerep egy virtuális AI-agent a host LLM-rendszerében. A `member_mother` tagként látszik a kolóniában, a javaslatfórumon pedig külön `forumAdvisor` metaadat jelzi a jelenlétét. Nem része a vitafolyamnak, nem ad `position` vagy `reply` bejegyzést, nem szavaz, nem kerül a befagyasztott választói körbe, és feladatot sem kaphat.
+
+Az agentek a `mother ask --as <agentId> --question <szöveg> [--task <id>] [--proposal <id>] [--context <szöveg>]` paranccsal kérdezhetik. A Colony Core a kérdést, a releváns feladat/javaslat adatait és az egyező belső memóriaelemeket forrásazonosítóval egy `colony.mother.consult.v1` LLM-kérésbe csomagolja. Mother professzionális tanácsadó, erőssége a több nézőpontú elemzés; kizárólag átadott bizonyítékra támaszkodhat, forrásokat nevez meg, elkülöníti a tényt és következtetést, és kimondja, ha nincs elegendő adat. Mintavételi javaslata `temperature: 0`, a profil alap vitamódja nincs beállítva.
+
+A core nem hív modellt és nem gyárt Mother-választ: a host futtatja a strukturált kérést a Mother LLM-profiljával. A visszaadott tanács nem kap döntési jogot, és a core nem állítja, hogy az LLM-választ önállóan ellenőrizte.

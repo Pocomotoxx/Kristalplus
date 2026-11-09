@@ -1,4 +1,4 @@
-import { IVectorStore, MemoryDocument, SearchOptions, SearchResult } from './types.js';
+import type { IVectorStore, MemoryDocument, SearchOptions, SearchResult } from './types.js';
 
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) {

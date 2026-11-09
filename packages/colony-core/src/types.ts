@@ -15,14 +15,23 @@ export type AgentRole =
   | 'researcher'
   | 'writer'
   | 'exobiologist'
+  | 'mother'
   | 'custom';
 
 /**
- * Roles that only receive a task when it asks for them by name. Left in the open pool, the
- * auditor would lose its independence by doing ordinary work, and the exobiologist would be handed
- * routine tasks it is not meant for. Neither counts as an implicit candidate in dispatch.
+ * Roles excluded from implicit task selection. Auditor and Exobiologist remain available when
+ * explicitly requested; Mother is advice-only and is excluded from all task dispatch.
  */
-export const ADVISORY_ROLES: readonly AgentRole[] = ['auditor', 'exobiologist'];
+export const ADVISORY_ROLES: readonly AgentRole[] = ['auditor', 'exobiologist', 'mother'];
+/** The Mother advises from supplied evidence and is never assigned work. */
+export const NON_ASSIGNABLE_ROLES: readonly AgentRole[] = ['mother'];
+
+export type ColonySpecialization = 'release-operations' | `domain:${string}`;
+export type DebateMode = 'rational' | 'fact-finding' | 'courtroom' | 'negotiation' | 'quarrel';
+export interface DebateModePair {
+  default: DebateMode;
+  alternate: DebateMode;
+}
 
 export type AgentStatus = 'idle' | 'busy' | 'voting' | 'offline' | 'error';
 
@@ -30,7 +39,7 @@ export interface ColonyAgentCapabilities {
   tools: string[];
   maxConcurrentTasks: number;
   languages?: string[];
-  specializations?: string[];
+  specializations?: ColonySpecialization[];
   contextWindowLimit?: number;
 }
 
@@ -114,6 +123,18 @@ export interface ColonyEvent<T = unknown> {
   payload: T;
 }
 
+export type ProposalPhase = 'discussion' | 'voting';
+export type DiscussionEntryKind = 'position' | 'reply';
+export interface ProposalDiscussionEntry {
+  id: string;
+  kind: DiscussionEntryKind;
+  mode: DebateMode;
+  authorId: string;
+  replyTo?: string;
+  text: string;
+  createdAt: number;
+}
+
 export interface ConsensusProposal<T = unknown> {
   id: string;
   taskId: string;
@@ -123,17 +144,46 @@ export interface ConsensusProposal<T = unknown> {
   votes: Map<string, ConsensusVote>;
   status: 'open' | 'approved' | 'rejected' | 'timeout';
   quorum: number;
-  /** Set when the quorum was derived from a strategy: the number of eligible voters. */
+  /** Number of eligible voters captured when the proposal was created. */
   voters?: number;
   strategy?: string;
+  /** New proposals freeze this electorate at creation; absent only on pre-migration ledger records. */
+  eligibleVoterIds?: readonly string[];
+  /** Voter identities are frozen with the electorate so only the designated profile can use quarrel mode. */
+  eligibleVoterRoles?: Readonly<Record<string, AgentRole>>;
+  eligibleVoterProfileIds?: Readonly<Record<string, string | null>>;
+  /** New proposals begin in discussion; legacy open proposals restore directly to voting. */
+  phase?: ProposalPhase;
+  discussion?: ProposalDiscussionEntry[];
+  finalProposal?: string;
+  /** Fixed weights captured at proposal creation, so later history cannot change its result. */
+  voterWeights?: Readonly<Record<string, number>>;
+  /** Host-reported execution-context independence evidence; explicitly not cryptographic attestation. */
+  independenceProof?: IndependenceProof;
   createdAt: number;
   expiresAt: number;
+}
+
+export interface IndependenceProof {
+  voterCount: number;
+  votesReceived: number;
+  distinctExecutionContexts: number;
+  unverifiedVotes: number;
+  identityConfidence: number;
+  status: 'unverified' | 'insufficient' | 'claimed_distinct';
+  evidence: 'host-reported-execution-context';
+  cryptographicAttestation: false;
 }
 
 export interface ConsensusVote {
   voterId: string;
   approve: boolean;
-  confidence: number; // 0.0 - 1.0
+  /** Validated 0..1 advisory metadata; it does not change the quorum count. */
+  confidence: number;
+  /** Host-reported stable process/session identity for this vote; not independently attested. */
+  executionContextId?: string;
+  /** Colony-derived contribution for weighted proposals; other strategies use one vote per member. */
+  weight?: number;
   reason?: string;
   timestamp: number;
 }

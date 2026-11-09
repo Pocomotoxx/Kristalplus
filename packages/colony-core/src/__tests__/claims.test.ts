@@ -152,6 +152,16 @@ test('close is idempotent and ignores unknown tasks; heldBy lists open claims on
   assert.deepEqual(ledger.heldBy('a').map((c) => c.taskId), ['t2']);
 });
 
+test('an expired member releases active and handoff-pending claims without a grace window', () => {
+  const ledger = new ClaimLedger(); ledger.claim('active', 'temporary', T0); ledger.claim('handoff', 'temporary', T0);
+  ledger.requestHandoff('handoff', 'temporary', 'other', 'transfer pending', T0, { targetOpenClaims: 0, maxClaims: 1 });
+  const expired = ledger.expireHolder('temporary', T0 + MIN); assert.deepEqual(expired.map(c => c.taskId), ['active', 'handoff']);
+  for (const claim of expired) { assert.equal(claim.status, 'stealable'); assert.equal(claim.stealableReason, 'member_expired'); assert.equal(claim.graceEndsAt, T0 + MIN); }
+  assert.equal(ledger.get('handoff')?.handoff, undefined);
+  assert.equal(ledger.steal('active', 'new-holder', T0 + MIN, room).claim.holderId, 'new-holder');
+  assert.deepEqual(ledger.expireHolder('temporary', T0 + 2 * MIN), []);
+});
+
 test('snapshot and restore keep every claim, and a restored copy is independent', () => {
   const ledger = new ClaimLedger();
   ledger.claim('t1', 'a', T0);

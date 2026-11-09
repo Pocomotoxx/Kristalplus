@@ -14,9 +14,10 @@
  * worse" rule is dropped: the score decides.
  */
 
-import { ADVISORY_ROLES } from '../types.js';
+import { ADVISORY_ROLES, NON_ASSIGNABLE_ROLES } from '../types.js';
 import type { AgentStatus, ColonyMember, ColonyTask } from '../types.js';
 import type { MemberStats } from './member-stats.js';
+import { isEphemeralExpired } from '../coordination/ephemeral-members.js';
 
 export interface ScoreWeights {
   capability: number;
@@ -37,6 +38,8 @@ export interface ScoreComponents {
 }
 
 export interface MemberScore {
+  /** True when the performance component uses task outcomes or quality reported by the host. */
+  selfReported: boolean;
   memberId: string;
   role: ColonyMember['role'];
   total: number;
@@ -72,12 +75,15 @@ const AVAILABILITY: Record<AgentStatus, number> = { idle: 1, voting: 0.5, busy: 
 
 /** Why `member` cannot take `task` right now, or null when it can. Mirrors `ColonyRegistry.findCandidates`. */
 export function ineligibleReason(task: ColonyTask, member: ColonyMember): string | null {
+  if (NON_ASSIGNABLE_ROLES.includes(member.role)) return `${member.name} is an advisor and never takes tasks`;
   if (member.status === 'offline' || member.status === 'error') return `member is ${member.status}`;
+  if (isEphemeralExpired(member)) return 'temporary member has expired';
   if (task.requiredRole && member.role !== task.requiredRole) return `role is ${member.role}, the task needs ${task.requiredRole}`;
   if (!task.requiredRole && ADVISORY_ROLES.includes(member.role)) return `${member.role} only takes a task that asks for that role`;
   if (member.currentTaskIds.length >= member.capabilities.maxConcurrentTasks) return 'member is at capacity';
   const needed = task.requiredCapabilities ?? [];
-  const missing = needed.filter((c) => !member.capabilities.tools.includes(c) && !member.capabilities.specializations?.includes(c));
+  const missing = needed.filter((c) => !member.capabilities.tools.includes(c)
+    && !member.capabilities.specializations?.some((specialization) => specialization === c));
   if (missing.length > 0) return `missing capabilities: ${missing.join(', ')}`;
   return null;
 }
@@ -88,7 +94,8 @@ function components(task: ColonyTask, member: ColonyMember, stats: MemberStats |
   // Capability: a base of 0.5, +0.3 when the member has exactly the role the task asks for,
   // +0.2 scaled by how much of the required capability list it covers (all of it, once eligible).
   const needed = task.requiredCapabilities ?? [];
-  const covered = needed.length === 0 ? 1 : needed.filter((c) => member.capabilities.tools.includes(c) || member.capabilities.specializations?.includes(c)).length / needed.length;
+  const covered = needed.length === 0 ? 1 : needed.filter((c) => member.capabilities.tools.includes(c)
+    || member.capabilities.specializations?.some((specialization) => specialization === c)).length / needed.length;
   const capability = clamp01(0.5 + (task.requiredRole && member.role === task.requiredRole ? 0.3 : 0) + 0.2 * covered);
 
   const load = clamp01(1 - member.currentTaskIds.length / Math.max(1, member.capabilities.maxConcurrentTasks));
@@ -130,7 +137,7 @@ export function rankMembers(
     }
     const c = components(task, member, stats.get(member.id));
     const total = c.capability * weights.capability + c.load * weights.load + c.performance * weights.performance + c.health * weights.health + c.availability * weights.availability;
-    ranked.push({ memberId: member.id, role: member.role, total: Math.round(total * 10000) / 10000, components: c });
+    ranked.push({ selfReported: stats.get(member.id)?.selfReported ?? false, memberId: member.id, role: member.role, total: Math.round(total * 10000) / 10000, components: c });
   }
 
   ranked.sort((a, b) => b.total - a.total || (a.memberId < b.memberId ? -1 : 1));

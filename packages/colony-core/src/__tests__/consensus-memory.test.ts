@@ -7,9 +7,30 @@ import { InMemoryVectorStore, cosineSimilarity } from '../memory/vector-store.js
 const newEngine = () => new ConsensusEngine(new MessageBus());
 const base = { taskId: 't', proposerId: 'p', topic: 'x', data: {} };
 
+async function readyProposal(
+  engine: ConsensusEngine,
+  options: {
+    quorum?: number;
+    timeoutMs?: number;
+    strategy?: 'weighted';
+    voters?: number;
+    voterWeights?: Record<string, number>;
+    eligibleVoterIds?: string[];
+  } = {},
+) {
+  const eligibleVoterIds = options.eligibleVoterIds ?? ['a', 'b', 'c', 'p'];
+  const eligibleVoterRoles = Object.fromEntries(eligibleVoterIds.map((id) => [id, 'custom' as const]));
+  const eligibleVoterProfileIds = Object.fromEntries(eligibleVoterIds.map((id) => [id, null]));
+  const proposal = await engine.submitProposal({ ...base, ...options, voters: eligibleVoterIds.length, eligibleVoterIds, eligibleVoterRoles, eligibleVoterProfileIds });
+  engine.addDiscussionEntry(proposal.id, { authorId: eligibleVoterIds[0], kind: 'position', mode: 'rational', text: 'Initial position' });
+  engine.addDiscussionEntry(proposal.id, { authorId: eligibleVoterIds[1], kind: 'reply', mode: 'fact-finding', replyTo: engine.getProposal(proposal.id)!.discussion![0].id, text: 'Consider the counterpoint' });
+  engine.finalizeDiscussion(proposal.id, 'p', 'Final decision text');
+  return proposal;
+}
+
 test('Consensus approves once approvals reach the quorum', async () => {
   const engine = newEngine();
-  const p = await engine.submitProposal({ ...base, quorum: 2 });
+  const p = await readyProposal(engine, { quorum: 2 });
 
   await engine.castVote(p.id, { voterId: 'a', approve: true });
   assert.equal(engine.getProposal(p.id)?.status, 'open');
@@ -19,17 +40,19 @@ test('Consensus approves once approvals reach the quorum', async () => {
 
 test('Consensus rejects when a majority rejects and enough votes are in', async () => {
   const engine = newEngine();
-  const p = await engine.submitProposal({ ...base, quorum: 2 });
+  const p = await readyProposal(engine, { quorum: 2 });
 
   await engine.castVote(p.id, { voterId: 'a', approve: false });
   assert.equal(engine.getProposal(p.id)?.status, 'open');
   await engine.castVote(p.id, { voterId: 'b', approve: false });
+  assert.equal(engine.getProposal(p.id)?.status, 'open');
+  await engine.castVote(p.id, { voterId: 'c', approve: false });
   assert.equal(engine.getProposal(p.id)?.status, 'rejected');
 });
 
 test('Consensus: a voter counts once and votes after finalization throw', async () => {
   const engine = newEngine();
-  const p = await engine.submitProposal({ ...base, quorum: 2 });
+  const p = await readyProposal(engine, { quorum: 2 });
 
   await engine.castVote(p.id, { voterId: 'a', approve: true });
   await engine.castVote(p.id, { voterId: 'a', approve: true });
@@ -42,11 +65,95 @@ test('Consensus: a voter counts once and votes after finalization throw', async 
 
 test('Consensus marks an expired proposal as timeout', async () => {
   const engine = newEngine();
-  const p = await engine.submitProposal({ ...base, timeoutMs: 1 });
+  const p = await readyProposal(engine, { timeoutMs: 1 });
   await new Promise((r) => setTimeout(r, 15));
 
   await engine.castVote(p.id, { voterId: 'a', approve: true });
   assert.equal(engine.getProposal(p.id)?.status, 'timeout');
+});
+
+test('weighted consensus applies the frozen member weights, not vote count', async () => {
+  const engine = newEngine();
+  await assert.rejects(
+    () => engine.submitProposal({ ...base, strategy: 'weighted', voters: 0, eligibleVoterIds: [], eligibleVoterRoles: {}, eligibleVoterProfileIds: {}, voterWeights: {} }),
+    /at least two unique eligible voter IDs/
+  );
+  const p = await readyProposal(engine, { strategy: 'weighted', voters: 3, eligibleVoterIds: ['strong', 'medium', 'light'], voterWeights: { strong: 0.6, medium: 0.25, light: 0.15 } });
+  assert.equal(p.quorum, 0.5 + Number.EPSILON);
+  await assert.rejects(() => engine.castVote(p.id, { voterId: 'outsider', approve: true }), /not an eligible voter/);
+  const result = await engine.castVote(p.id, { voterId: 'strong', approve: true });
+  assert.equal(result.status, 'approved');
+  assert.equal(result.votes.get('strong')?.weight, 0.6);
+  const restored = newEngine();
+  restored.restore(engine.snapshot());
+  assert.equal(restored.getProposal(p.id)?.voterWeights?.strong, 0.6);
+});
+
+test('weighted consensus rejects when remaining possible approval weight misses quorum', async () => {
+  const engine = newEngine();
+  const p = await readyProposal(engine, { strategy: 'weighted', voters: 3, eligibleVoterIds: ['a', 'b', 'c'], voterWeights: { a: 0.4, b: 0.35, c: 0.25 } });
+  await engine.castVote(p.id, { voterId: 'a', approve: true });
+  assert.equal(engine.getProposal(p.id)?.status, 'open');
+  await engine.castVote(p.id, { voterId: 'b', approve: false });
+  assert.equal(engine.getProposal(p.id)?.status, 'open');
+  const rejected = await engine.castVote(p.id, { voterId: 'c', approve: false });
+  assert.equal(rejected.status, 'rejected');
+});
+
+
+test('discussion is ordered, replies target positions, and all strategies enforce a frozen electorate', async () => {
+  const engine = newEngine();
+  const eligibleVoterIds = ['p', 'a', 'b'];
+  const eligibleVoterRoles = Object.fromEntries(eligibleVoterIds.map((id) => [id, id === 'b' ? 'writer' as const : 'custom' as const]));
+  const eligibleVoterProfileIds = Object.fromEntries(eligibleVoterIds.map((id) => [id, null]));
+  const proposal = await engine.submitProposal({ ...base, eligibleVoterIds, eligibleVoterRoles, eligibleVoterProfileIds });
+  await assert.rejects(() => engine.castVote(proposal.id, { voterId: 'a', approve: true }), /discussion is not finalized/);
+  assert.throws(
+    () => engine.addDiscussionEntry(proposal.id, { authorId: 'outsider', kind: 'position', mode: 'rational', text: 'Outside view' }),
+    /frozen electorate/,
+  );
+  assert.throws(
+    () => engine.addDiscussionEntry(proposal.id, { authorId: 'a', kind: 'position', mode: 'quarrel', text: 'Not permitted' }),
+    /not available to member/,
+  );
+  const position = engine.addDiscussionEntry(proposal.id, { authorId: 'a', kind: 'position', mode: 'rational', text: 'Keep the change' });
+  assert.throws(
+    () => engine.addDiscussionEntry(proposal.id, { authorId: 'a', kind: 'reply', mode: 'rational', replyTo: position.id, text: 'Self reply' }),
+    /own position/,
+  );
+  assert.throws(() => engine.finalizeDiscussion(proposal.id, 'p', 'Too early'), /at least one reply/);
+  assert.throws(() => engine.addDiscussionEntry(proposal.id, { authorId: 'a', kind: 'position', mode: 'rational', text: 'Second position' }), /only one position/);
+  const reply = engine.addDiscussionEntry(proposal.id, { authorId: 'b', kind: 'reply', mode: 'negotiation', replyTo: position.id, text: 'Add a rollback plan' });
+  assert.equal(reply.replyTo, position.id);
+  assert.throws(() => engine.finalizeDiscussion(proposal.id, 'a', 'Not the proposer'), /only the proposer/);
+  engine.finalizeDiscussion(proposal.id, 'p', 'Ship with rollback');
+  await assert.rejects(() => engine.castVote(proposal.id, { voterId: 'outsider', approve: true }), /frozen electorate/);
+  assert.equal((await engine.castVote(proposal.id, { voterId: 'a', approve: true })).phase, 'voting');
+  const restored = newEngine();
+  restored.restore(engine.snapshot());
+  assert.deepEqual(restored.getProposal(proposal.id)?.eligibleVoterIds, ['p', 'a', 'b']);
+  assert.equal(restored.getProposal(proposal.id)?.discussion?.length, 2);
+  assert.equal(restored.getProposal(proposal.id)?.finalProposal, 'Ship with rollback');
+});
+
+
+test('only the concerned challenger profile can use the quarrel debate mode', async () => {
+  const engine = newEngine();
+  const ids = ['concerned', 'peer'];
+  const proposal = await engine.submitProposal({
+    ...base,
+    eligibleVoterIds: ids,
+    eligibleVoterRoles: { concerned: 'auditor', peer: 'auditor' },
+    eligibleVoterProfileIds: { concerned: 'profile_concerned_challenger', peer: 'profile_auditor' },
+  });
+  const entry = engine.addDiscussionEntry(proposal.id, {
+    authorId: 'concerned', kind: 'position', mode: 'quarrel', text: 'This release path has an unhandled failure chain.',
+  });
+  assert.equal(entry.mode, 'quarrel');
+  assert.throws(
+    () => engine.addDiscussionEntry(proposal.id, { authorId: 'peer', kind: 'position', mode: 'quarrel', text: 'I also quarrel' }),
+    /not available to member/,
+  );
 });
 
 test('cosineSimilarity: identical, orthogonal, zero vector, dimension mismatch', () => {
@@ -88,4 +195,18 @@ test('InMemoryVectorStore count, delete and clear by namespace', async () => {
 
   await store.clear('n2');
   assert.equal(await store.count(), 0);
+});
+
+
+test('Mother cannot be frozen into a voter electorate', async () => {
+  const engine = newEngine();
+  await assert.rejects(
+    () => engine.submitProposal({
+      ...base,
+      eligibleVoterIds: ['reviewer', 'member_mother'],
+      eligibleVoterRoles: { reviewer: 'reviewer', member_mother: 'mother' },
+      eligibleVoterProfileIds: { reviewer: null, member_mother: 'profile_mother' },
+    }),
+    /Mother is an advisor and cannot be included/,
+  );
 });

@@ -1,13 +1,13 @@
 /**
- * Quorum rules for colony voting. Pure functions, no network, no timers.
+ * Quorum thresholds for colony voting. Pure functions, no network, no timers, no identity attestation.
  *
  * Ported in spirit from the legacy swarm consensus (Raft majority, Byzantine 3f+1), without
  * the replication protocol: the colony has one ledger, so only the decision rules are needed.
  */
 
-export type QuorumStrategy = 'majority' | 'supermajority' | 'byzantine' | 'unanimous';
+export type QuorumStrategy = 'majority' | 'supermajority' | 'byzantine' | 'unanimous' | 'weighted';
 
-export const QUORUM_STRATEGIES: readonly QuorumStrategy[] = ['majority', 'supermajority', 'byzantine', 'unanimous'];
+export const QUORUM_STRATEGIES: readonly QuorumStrategy[] = ['majority', 'supermajority', 'byzantine', 'unanimous', 'weighted'];
 
 /** Number of approving votes needed among `voters` eligible voters. */
 export function requiredApprovals(strategy: QuorumStrategy, voters: number): number {
@@ -20,12 +20,15 @@ export function requiredApprovals(strategy: QuorumStrategy, voters: number): num
     case 'supermajority':
       return Math.ceil((2 * voters) / 3);
     case 'byzantine': {
-      // Tolerates f faulty voters when voters >= 3f + 1; the quorum always intersects in an honest voter.
+      // Classical 3f+1 threshold. Its fault-tolerance interpretation assumes independent fault domains;
+      // this helper only computes a count and cannot prove that the voter identities are independent.
       const f = Math.floor((voters - 1) / 3);
       return Math.floor((voters + f) / 2) + 1;
     }
     case 'unanimous':
       return voters;
+    case 'weighted':
+      throw new Error('weighted quorum requires member weights');
   }
 }
 

@@ -6,8 +6,8 @@
  * hostile phrasing there is an injection route.
  *
  * Honest limits:
- * - This is a list of regular expressions. It catches the common phrasings and misses anything
- *   reworded, translated or encoded. A clean result is "nothing on the list matched", not "safe".
+ * - This is a list of regular expressions for common English and Hungarian phrasings. It misses
+ *   reworded, other-language or encoded attacks. A clean result is "nothing on the list matched", not "safe".
  * - A hit can be a false positive (text that talks ABOUT injection). The verdict is advice to the host.
  * - Excerpts and offsets come from untrusted text. They are data, never instructions.
  *
@@ -65,6 +65,15 @@ interface Pattern {
 }
 
 const PATTERNS: Pattern[] = [
+  { regex: /felejts(?:d|étek)?\s+el\s+(?:az\s+)?(?:összes|minden)t?/i, type: 'instruction_override', severity: 'critical', description: 'Magyar kísérlet az utasítások és a korábbi kontextus elvetésére', confidence: 0.94 },
+  { regex: /(?:aktiváld|kapcsold\s+be|lépj\s+be).{0,50}fejlesztői\s+mód|fejlesztői\s+mód(?:ot|ba|ban)/i, type: 'role_switching', severity: 'high', description: 'Magyar fejlesztői mód váltási kísérlet', confidence: 0.92 },
+  { regex: /(?:fedd|tárd)\s+fel.{0,80}(?:rendszer(?:üzenet|utasítás|prompt)|system\s+prompt)/i, type: 'context_manipulation', severity: 'critical', description: 'Magyar kísérlet a rendszerprompt feltárására', confidence: 0.96 },
+  { regex: /jailbreak|korlátozás.{0,40}megkerülés|védelmi\s+szabályok.{0,40}(?:kiiktatás|kikapcsolás)/i, type: 'jailbreak', severity: 'critical', description: 'Jailbreak vagy a védelmi korlátok megkerülésére tett kísérlet', confidence: 0.95 },
+  { regex: /hagy(?:d|j[aá]tok)\s+figyelmen\s+k[ií]v[uü]l\s+(?:az\s+)?(?:összes\s+)?(?:korábbi|el[oő]z[oő])\s+utas[ií]t[aá]s(?:t|okat)?/i, type: 'instruction_override', severity: 'critical', description: 'Magyar kísérlet a korábbi utasítások felülírására', confidence: 0.97 },
+  { regex: /figyelmen\s+k[ií]v[uü]l\s+(?:az\s+)?(?:összes\s+)?(?:korábbi|el[oő]z[oő])\s+utas[ií]t[aá]s(?:t|okat)?/i, type: 'instruction_override', severity: 'critical', description: 'Magyar kísérlet a korábbi utasítások felülírására', confidence: 0.95 },
+  { regex: /nincs\s+(?:semmilyen|b[aá]rmilyen)\s+korl[aá]toz[aá]s(?:od|a|otok)?/i, type: 'jailbreak', severity: 'critical', description: 'Magyar korlátozás nélküli működésre utasítás', confidence: 0.94 },
+  { regex: /viselkedj\s+[uú]gy,?\s+mintha.{0,80}(?:fejleszt[oő]i|developer)\s+m[oó]dban\s+lenn[eé]l/i, type: 'role_switching', severity: 'high', description: 'Magyar szerep- vagy fejlesztői mód váltási kísérlet', confidence: 0.92 },
+  { regex: /fedd\s+fel.{0,80}(?:rendszer(?:üzenet|utas[ií]t[aá]s)|system\s+prompt)/i, type: 'context_manipulation', severity: 'critical', description: 'Magyar kísérlet a rendszerüzenet feltárására', confidence: 0.96 },
   { regex: /ignore\s+(?:all\s+)?(?:previous\s+)?instructions/i, type: 'instruction_override', severity: 'critical', description: 'Attempt to override instructions', confidence: 0.95 },
   { regex: /forget\s+(?:everything|all|previous)/i, type: 'instruction_override', severity: 'critical', description: 'Attempt to reset context', confidence: 0.92 },
   { regex: /disregard\s+(?:all\s+)?(?:previous|prior|above)/i, type: 'instruction_override', severity: 'critical', description: 'Attempt to disregard instructions', confidence: 0.93 },
