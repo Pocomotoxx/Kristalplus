@@ -6,8 +6,8 @@
  * hostile phrasing there is an injection route.
  *
  * Honest limits:
- * - This is a list of regular expressions. It catches the common phrasings and misses anything
- *   reworded, translated or encoded. A clean result is "nothing on the list matched", not "safe".
+ * - This is a list of regular expressions for common English and Hungarian phrasings. It misses
+ *   reworded, other-language or encoded attacks. A clean result is "nothing on the list matched", not "safe".
  * - A hit can be a false positive (text that talks ABOUT injection). The verdict is advice to the host.
  * - Excerpts and offsets come from untrusted text. They are data, never instructions.
  *
