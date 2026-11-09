@@ -1,5 +1,5 @@
 /**
- * Quorum rules for colony voting. Pure functions, no network, no timers.
+ * Quorum thresholds for colony voting. Pure functions; these rules do not attest voter independence.
  *
  * Ported in spirit from the legacy swarm consensus (Raft majority, Byzantine 3f+1), without
  * the replication protocol: the colony has one ledger, so only the decision rules are needed.
@@ -20,7 +20,7 @@ export function requiredApprovals(strategy: QuorumStrategy, voters: number): num
     case 'supermajority':
       return Math.ceil((2 * voters) / 3);
     case 'byzantine': {
-      // Tolerates f faulty voters when voters >= 3f + 1; the quorum always intersects in an honest voter.
+      // Classical 3f+1 threshold. Its fault-domain guarantee assumes independent voters; this helper cannot prove that assumption.
       const f = Math.floor((voters - 1) / 3);
       return Math.floor((voters + f) / 2) + 1;
     }
