@@ -128,6 +128,11 @@ export class FileVectorStore implements IVectorStore {
     await this.persist();
   }
 
+  public async list(): Promise<MemoryDocument[]> {
+    await this.ensureLoaded();
+    return Array.from(this.docs.values(), (d) => ({ ...d }));
+  }
+
   public async search(queryVector: number[], options: SearchOptions = {}): Promise<SearchResult[]> {
     await this.ensureLoaded();
     const topK = options.topK ?? 5;
@@ -153,7 +158,8 @@ export class FileVectorStore implements IVectorStore {
       if (namespace && doc.namespace !== namespace) {
         continue;
       }
-      if (!doc.vector || doc.vector.length === 0) {
+      // A vector from another embedding size cannot be compared: skip it (reindex fixes it) instead of failing the search.
+      if (!doc.vector || doc.vector.length !== queryVector.length) {
         continue;
       }
 

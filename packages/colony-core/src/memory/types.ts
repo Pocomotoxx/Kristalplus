@@ -11,6 +11,8 @@ export interface MemoryDocument {
   namespace?: string;
   metadata?: Record<string, unknown>;
   createdAt: number;
+  /** Name of the embedding provider that made `vector`; a different provider means the vector is stale. */
+  embedder?: string;
 }
 
 export interface SearchOptions {
@@ -41,6 +43,8 @@ export interface IEmbeddingProvider {
  */
 export interface IVectorStore {
   upsert(docs: MemoryDocument[]): Promise<void>;
+  /** All stored documents. Optional; needed to re-embed after the embedding provider changed. */
+  list?(): Promise<MemoryDocument[]>;
   search(queryVector: number[], options?: SearchOptions): Promise<SearchResult[]>;
   delete(ids: string[]): Promise<void>;
   count(namespace?: string): Promise<number>;

@@ -66,6 +66,18 @@ export interface ReviewRecord {
   at: number;
 }
 
+export interface TaskVerification {
+  command: string;
+  exitCode: number | null;
+  passed: boolean;
+  timedOut: boolean;
+  durationMs: number;
+  at: number;
+  /** Short hash of the output; the output itself is not stored. */
+  outputHash: string;
+  outputBytes: number;
+}
+
 export interface ColonyTask {
   id: string;
   title: string;
@@ -99,6 +111,10 @@ export interface ColonyTask {
   quality?: number;
   /** The host says a test run backed this outcome. The colony cannot check that; it only keeps the label apart. */
   verifiedByTest?: boolean;
+  /** Evidence from a check the COLONY ran itself (unlike `verifiedByTest`, which is the host's statement). */
+  verification?: TaskVerification;
+  /** The quality the host reported, when a failed colony check lowered `quality`. */
+  reportedQuality?: number;
   consensusRequired?: boolean;
   minConsensusQuorum?: number;
   createdAt: number;

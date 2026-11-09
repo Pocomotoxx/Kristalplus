@@ -9,6 +9,8 @@ export interface ReasoningPattern {
   createdAt: number;
   /** Similarity to the query, set by `recallPatterns`. */
   relevance?: number;
+  /** The colony ran a check on this work and it passed. */
+  verified?: boolean;
 }
 
 /**
@@ -32,6 +34,7 @@ export class ReasoningBank {
     solution: string;
     role: string;
     successScore?: number;
+    verified?: boolean;
     /** A stable id makes a later record for the same work replace this one. */
     id?: string;
   }): Promise<ReasoningPattern> {
@@ -57,6 +60,7 @@ export class ReasoningBank {
         metadata: {
           role: pattern.role,
           score,
+          verified: Boolean(pattern.verified),
           problem: pattern.problem,
           solution: pattern.solution,
         },
@@ -95,6 +99,7 @@ export class ReasoningBank {
         successScore: meta?.score ?? res.score, // `||` would turn a reported 0 into the similarity score
         createdAt: res.document.createdAt,
         relevance: res.score,
+        verified: Boolean(meta?.verified),
       });
     }
 

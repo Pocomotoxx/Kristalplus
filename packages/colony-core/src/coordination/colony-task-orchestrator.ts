@@ -1,4 +1,4 @@
-import { ColonyMember, ColonyTask, ReviewRecord, TaskPriority, TaskStatus, AgentRole } from '../types.js';
+import { ColonyMember, ColonyTask, ReviewRecord, TaskPriority, TaskStatus, AgentRole, TaskVerification } from '../types.js';
 import { MAX_KEPT_REVIEWS, maxRoundsOf, REVIEW_LIMIT_HOLDER, reviewBlocksCompletion, validateMaxRounds } from '../chief/review.js';
 import { ColonyRegistry } from './colony-registry.js';
 import { OutcomeReport, validateQuality } from '../chief/outcome.js';
@@ -32,6 +32,9 @@ export interface SplitPart {
 /**
  * Orchestrator responsible for managing, scheduling, and delegating Colony tasks
  */
+/** A failed colony check lowers a reported quality to at most this. */
+export const VERIFY_FAIL_QUALITY_CAP = 0.3;
+
 export class ColonyTaskOrchestrator {
   private tasks = new Map<string, ColonyTask>();
   private registry: ColonyRegistry;
@@ -319,6 +322,28 @@ export class ColonyTaskOrchestrator {
         await this.tryDispatchTask(pendingTask.id);
       }
     }
+  }
+
+  /**
+   * Record the result of a check the colony ran itself. Independent evidence outranks the host's
+   * word: a failed check caps the quality at VERIFY_FAIL_QUALITY_CAP (the reported value is kept),
+   * and the hub relearns from the lowered rating. A passed check marks the work verified.
+   */
+  public async verifyTask(taskId: string, verification: TaskVerification): Promise<{ contradiction: boolean; capped: boolean }> {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Task '${taskId}' not found`);
+    if (task.status !== 'completed') throw new Error(`Task '${taskId}' is ${task.status}: only a completed task can be verified`);
+    task.verification = verification;
+    const contradiction = !verification.passed && Boolean(task.verifiedByTest);
+    const capped = !verification.passed && task.quality !== undefined && task.quality > VERIFY_FAIL_QUALITY_CAP;
+    if (capped) {
+      task.reportedQuality = task.quality;
+      task.quality = VERIFY_FAIL_QUALITY_CAP;
+    }
+    await this.messageBus.publish('task:verified', 'orchestrator', { taskId, passed: verification.passed });
+    // Either way the memory of this work changes (lowered rating, or now marked verified): relearn it.
+    if (capped || verification.passed) await this.messageBus.publish('task:rated', 'orchestrator', { taskId, success: true });
+    return { contradiction, capped };
   }
 
   /** Set the quality of a finished task after the fact; the hub relearns from it. */

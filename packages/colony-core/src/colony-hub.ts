@@ -195,6 +195,7 @@ export class ColonyHub {
       solution,
       role: task.requiredRole || 'engineer',
       successScore: task.quality,
+      verified: task.verification?.passed === true,
     });
   }
 

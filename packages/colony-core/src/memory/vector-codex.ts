@@ -36,6 +36,7 @@ export class VectorCodex {
       namespace: doc.namespace,
       metadata: doc.metadata || {},
       createdAt: Date.now(),
+      embedder: this.embeddings.name,
     }));
 
     await this.store.upsert(documents);
@@ -48,6 +49,19 @@ export class VectorCodex {
   public async search(queryText: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     const queryVector = await this.embeddings.embedText(queryText);
     return this.store.search(queryVector, options);
+  }
+
+  /**
+   * Re-embed the documents whose vector was made by another embedding provider (or has another size).
+   * The text is kept in every document, so nothing is lost when the embedding improves. Returns how many were redone.
+   */
+  public async reindex(): Promise<number> {
+    if (!this.store.list) return 0;
+    const stale = (await this.store.list()).filter((d) => d.embedder !== this.embeddings.name || d.vector?.length !== this.embeddings.dimension);
+    if (stale.length === 0) return 0;
+    const vectors = await this.embeddings.embedBatch(stale.map((d) => d.text));
+    await this.store.upsert(stale.map((d, i) => ({ ...d, vector: vectors[i], embedder: this.embeddings.name })));
+    return stale.length;
   }
 
   public async count(namespace?: string): Promise<number> {

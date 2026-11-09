@@ -32,6 +32,10 @@ export class InMemoryVectorStore implements IVectorStore {
     }
   }
 
+  public async list(): Promise<MemoryDocument[]> {
+    return Array.from(this.docs.values(), (d) => ({ ...d }));
+  }
+
   public async search(queryVector: number[], options: SearchOptions = {}): Promise<SearchResult[]> {
     const topK = options.topK ?? 5;
     const minScore = options.minScore ?? 0.0;
@@ -44,7 +48,8 @@ export class InMemoryVectorStore implements IVectorStore {
         continue;
       }
 
-      if (!doc.vector || doc.vector.length === 0) {
+      // A vector from another embedding size cannot be compared: skip it (reindex fixes it) instead of failing the search.
+      if (!doc.vector || doc.vector.length !== queryVector.length) {
         continue;
       }
 

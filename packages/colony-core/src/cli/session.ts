@@ -167,6 +167,7 @@ export class ColonySession {
     const stateDir = path.join(dir, STATE_DIR);
     const codex = new VectorCodex({ vectorStore: new FileVectorStore({ storagePath: path.join(stateDir, MEMORY_FILE) }) });
     const hub = new ColonyHub({ name: 'Colony', codex });
+    await codex.reindex(); // memory written by an older embedding is re-embedded once
 
     const ledgerText = await readIfExists(path.join(stateDir, LEDGER_FILE));
     if (ledgerText !== null) {

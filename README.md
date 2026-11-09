@@ -84,6 +84,37 @@ node dist/cli.js done <taskId> --result "mit csináltam" # valós, nem üres ere
 | `audit list\|verify` | A `.colony/audit.jsonl` hash-láncolt napló: ki mit tett (feladat, foglalás, szavazat, kapu-döntés). A `verify` a láncot és azt ellenőrzi, hogy a napló még tartalmazza az utolsó bootkor rögzített bejegyzést. |
 | `vote <javaslat> --as <tag> --approve\|--reject --reason <szöveg>` | Szavaz (`--confidence 0..1`). Indoklás kötelező. |
 | `memory add\|search` | Kézi memóriaírás és -keresés (`--ns`, `--k`). |
+| `profile interview\|answer\|show\|reset` | A fejlesztői profil: fix, kihagyható kérdések lépésenként (`--section`, `--skip` = nincs preferencia). A válaszok a `.colony/profile.json` fájlba kerülnek; a szabad szöveg átmegy az injekciószűrőn és a kitakaráson. A `next` átadja az agentnek. |
+| `rate <feladat> --quality 0..1` | Lezárt feladat utólagos értékelése. Te vagy az egyetlen megbízható forrás: az érték felülírja a bejelentettet, és a memória újratanulja. |
+| `verify <feladat> [--timeout-sec N] -- <parancs…>` | A Colony **maga futtatja** az ellenőrzést (tesztek, build), és rögzíti a bizonyítékot (kilépési kód, a kimenet hash-e; maga a kimenet nem tárolódik). Bukó futás lerontja a minőséget (legfeljebb 0,3), és megnevezi az ellentmondást, ha a host azt állította, hogy a tesztek mentek. |
+| `hook pretool\|install` | Őrszem egy host eszközhívás-horgához (lásd lent). |
+
+### Mit lát az agent a feladat előtt
+
+A `next` kimenete nem csak a feladatot adja, hanem azt is, amit a Colony tud:
+
+- `profile`: amit a fejlesztő a munkamódjáról mondott (a kihagyott kérdések nincsenek benne);
+- `recall.worked`: hasonló, jól értékelt korábbi munka (az értékeléssel, a hasonlósággal és azzal, hogy a Colony futtatott-e rá ellenőrzést);
+- `recall.caution`: hasonló, rosszul értékelt munka, azaz amit nem érdemes megismételni;
+- `recall.ask`: utasítás a hostnak, hogy mutassa meg ezt a felhasználónak, és kérdezze meg, alkalmazza-e, mielőtt nekilát. A felhasználó dönt.
+
+Csak értékelt (`--quality`, `rate`) munka kerül a tanulási memóriába; a minősítetlen eredmény nem lesz csendben „tökéletes siker".
+
+### Őrszem: a kapuk kikényszerítése
+
+A `check` egy ellenőrzés, amit a host kedve szerint hív meg. Ha a host támogat eszközhívás-horgot (például Claude Code `PreToolUse`), a `colony hook pretool` ezt kikényszeríti: a hívás **előtt** megkapja az eszközhívást, és
+megtagadhatja (`deny`) vagy rákérdeztetheti a felhasználóra (`ask`):
+
+- shellparancs: romboló művelet, titok;
+- fájlírás és -szerkesztés: a projekten kívüli út, a `.colony/` (állapot, szabályok) és a `.git/` közvetlen szerkesztése, titok, nagyon nagy írás (csak jegyzet).
+
+A hook soha nem ad engedélyt (`allow` esetén nem ír semmit), csak elvehet; olvashatatlan bemenetnél megtagad (2-es kód). Beállítás: `colony hook install` kiírja a `.claude/settings.json` részletét (nem ír fájlt).
+Korlát: csak azokat az eszközöket fedi, amelyeket a host a horoghoz kötött, és azt látja, ami az eszközhívásban benne van (futás közben összeállított parancsot vagy egy szkript belsejét nem).
+
+### Párhuzamos hostok és a keresés minősége
+
+- **Zárolás:** minden parancs a `.colony/state.lock` zár alatt fut, így két host nem írja felül egymás állapotát. A holt folyamat zárját a következő parancs átveszi; foglalt zárnál érthető hibával lejár.
+- **Keresés:** a helyi beágyazás szavakat és szórészleteket (3- és 4-gramm) kivonatol, ékezetet hajtogat, és magyar–angol töltelékszavakat hagy el, így a ragozott alakok (`feladatokat` ~ `feladat`) közel esnek. Ez **lexikális** hasonlóság, nem jelentésmodell: közös betű nélküli rokonértelmű szavakat (`car` és `automobile`) nem köt össze. A `retrieval-quality` teszt méri: 16 kérdésen az 1. helyen találja a helyes régi munkát a kérdések 94%-ában (a korábbi beágyazás 6%). Saját modellt az `IEmbeddingProvider` felületen lehet bekötni; a régebbi memória egyszer újraszámolódik.
 
 A boot állapotai (a Colony bootlogikája):
 - `LOADED`: az állapotfájlok érvényesek, a git-revízió ismert.
@@ -113,9 +144,10 @@ A gyökérből `pnpm test` lefordítja és futtatja a `colony-core` tesztjeit.
 
 ## Ismert hiányok
 
-- A `colony-core` tesztjei (`pnpm test`, 248 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
+- A `colony-core` tesztjei (`pnpm test`, 289 teszt) a buszt, a nyilvántartást, az orchestratort, a konszenzust, a vektortárat és a CLI teljes munkafolyamatát fedik (boot, szabályok, feladatok, szavazás, memória). A `ColonyHub`, a `FileVectorStore`, a MoE-router és a Reasoning Bank külön tesztelése még hiányzik.
 - A szabályok csak kötelező készletből állnak, és mind a bootban töltődnek be. Feladathoz kötött szabálybetöltésre (útválasztóra) szándékosan nincs szükség.
 - A kezdő szabálykészlet rövid, és a projekt igényeihez kell igazítani.
+- Az ellenőrzések (`verify`) és az őrszem csak azt látják, amit a host megmutat vagy lefuttat; a Colony nem lát a host belsejébe. Az értékelés végső forrása a felhasználó.
 - A beépített tagok (11 szerep) fixek; a `member preset standard` csak pótolja a hiányzókat. Egyedi tag felvétele és az ideiglenes tagok még nincsenek (P9 a [tervben](docs/QUEEN-PORT-PLAN.md)).
 - A `plant.md` V. és VI. fázisa nincs leírva, és nincs bennük kész kód.
 
