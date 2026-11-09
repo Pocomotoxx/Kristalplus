@@ -1,4 +1,4 @@
-import type { AgentRole, ConsensusProposal, ConsensusVote, DebateMode, DiscussionEntryKind, ProposalDiscussionEntry } from '../types.js';
+import type { AgentRole, ConsensusProposal, ConsensusVote, DebateMode, DiscussionEntryKind, IndependenceProof, ProposalDiscussionEntry } from '../types.js';
 import type { MessageBus } from '../message-bus.js';
 import { canStillReach, requiredApprovals } from './strategies.js';
 import type { QuorumStrategy } from './strategies.js';
@@ -23,6 +23,35 @@ export interface ProposalOptions<T = unknown> {
 }
 
 export type SerializedProposal = Omit<ConsensusProposal<any>, 'votes'> & { votes: ConsensusVote[] };
+
+function buildIndependenceProof(votes: readonly ConsensusVote[], voterCount: number): IndependenceProof {
+  const contexts = new Set(votes.map((vote) => vote.executionContextId?.trim()).filter((id): id is string => Boolean(id)));
+  const unverifiedVotes = votes.filter((vote) => !vote.executionContextId?.trim()).length;
+  const distinctExecutionContexts = contexts.size + (unverifiedVotes > 0 ? 1 : 0);
+  const identityConfidence = votes.length === 0 ? 0 : distinctExecutionContexts / votes.length;
+  return {
+    voterCount,
+    votesReceived: votes.length,
+    distinctExecutionContexts,
+    unverifiedVotes,
+    identityConfidence: Math.round(identityConfidence * 100) / 100,
+    status: votes.length === 0 ? 'unverified' : identityConfidence === 1 && unverifiedVotes === 0 ? 'claimed_distinct' : 'insufficient',
+    evidence: 'host-reported-execution-context',
+    cryptographicAttestation: false,
+  };
+}
+
+function independentApprovalCount(votes: readonly ConsensusVote[]): number {
+  const contexts = new Map<string, ConsensusVote[]>();
+  for (const vote of votes) {
+    const key = vote.executionContextId?.trim() || '__unverified_execution_context__';
+    const group = contexts.get(key) ?? [];
+    group.push(vote);
+    contexts.set(key, group);
+  }
+  // A claimed execution context contributes at most one approval. Conflicting votes fail closed.
+  return [...contexts.values()].filter((group) => group.every((vote) => vote.approve)).length;
+}
 
 /**
  * Robust, model-agnostic consensus engine supporting quorum and confidence-weighted voting
@@ -104,6 +133,7 @@ export class ConsensusEngine {
       ...(options.strategy === 'weighted' ? { voterWeights: Object.freeze({ ...options.voterWeights }) } : {}),
       createdAt: Date.now(),
       expiresAt: Date.now() + timeoutMs,
+      independenceProof: buildIndependenceProof([], voters),
     };
 
     this.proposals.set(id, proposal);
@@ -193,7 +223,7 @@ export class ConsensusEngine {
    */
   public async castVote(
     proposalId: string,
-    vote: { voterId: string; approve: boolean; confidence?: number; reason?: string }
+    vote: { voterId: string; approve: boolean; confidence?: number; reason?: string; executionContextId?: string }
   ): Promise<ConsensusProposal<any>> {
     const proposal = this.proposals.get(proposalId);
     if (!proposal) {
@@ -216,6 +246,10 @@ export class ConsensusEngine {
       throw new Error(`Member '${vote.voterId}' is not an eligible voter in the frozen electorate for proposal '${proposalId}'`);
     }
 
+    if (vote.executionContextId !== undefined && (!vote.executionContextId.trim() || vote.executionContextId.trim().length > 200)) {
+      throw new Error('executionContextId must contain 1–200 non-whitespace characters');
+    }
+
     if (proposal.voters !== undefined && !proposal.votes.has(vote.voterId) && proposal.votes.size >= proposal.voters) {
       throw new Error(`Proposal '${proposalId}' already has votes from all ${proposal.voters} eligible voters`);
     }
@@ -228,15 +262,19 @@ export class ConsensusEngine {
       voterId: vote.voterId,
       approve: vote.approve,
       confidence: vote.confidence ?? 1.0,
+      ...(vote.executionContextId ? { executionContextId: vote.executionContextId.trim() } : {}),
       ...(proposal.strategy === 'weighted' ? { weight: proposal.voterWeights![vote.voterId] } : {}),
       reason: vote.reason,
       timestamp: Date.now(),
     });
 
+    proposal.independenceProof = buildIndependenceProof(Array.from(proposal.votes.values()), proposal.voters ?? proposal.eligibleVoterIds?.length ?? proposal.votes.size);
+
     await this.messageBus.publish('consensus:vote_cast', vote.voterId, {
       proposalId,
       approve: vote.approve,
       confidence: vote.confidence ?? 1.0,
+      ...(vote.executionContextId ? { executionContextId: vote.executionContextId.trim() } : {}),
       ...(proposal.strategy === 'weighted' ? { weight: proposal.voterWeights![vote.voterId] } : {}),
     });
 
@@ -251,7 +289,8 @@ export class ConsensusEngine {
 
     // Calculate confidence-weighted approval
     const totalWeightedApproval = approvals.reduce((sum, v) => sum + (v.weight ?? v.confidence), 0);
-    const approvalCount = proposal.strategy === 'weighted' ? totalWeightedApproval : approvals.length;
+    const approvalCount = proposal.strategy === 'weighted' ? totalWeightedApproval
+      : proposal.strategy === 'byzantine' ? independentApprovalCount(votes) : approvals.length;
 
     if (approvalCount >= proposal.quorum) {
       proposal.status = 'approved';
@@ -265,7 +304,9 @@ export class ConsensusEngine {
       proposal.voters !== undefined
         ? proposal.strategy === 'weighted'
           ? totalWeightedApproval + Object.entries(proposal.voterWeights ?? {}).filter(([id]) => !proposal.votes.has(id)).reduce((sum, [, weight]) => sum + weight, 0) < proposal.quorum
-          : !canStillReach(approvals.length, rejections.length, proposal.voters, proposal.quorum)
+          : proposal.strategy === 'byzantine'
+            ? proposal.votes.size >= proposal.voters && approvalCount < proposal.quorum
+            : !canStillReach(approvals.length, rejections.length, proposal.voters, proposal.quorum)
         : rejections.length > votes.length / 2 && votes.length >= proposal.quorum
     ) {
       proposal.status = 'rejected';
@@ -278,17 +319,19 @@ export class ConsensusEngine {
   }
 
   public getProposal(proposalId: string): ConsensusProposal<any> | undefined {
-    return this.proposals.get(proposalId);
+    const proposal = this.proposals.get(proposalId);
+    return proposal ? { ...proposal, independenceProof: buildIndependenceProof(Array.from(proposal.votes.values()), proposal.voters ?? proposal.eligibleVoterIds?.length ?? proposal.votes.size) } : undefined;
   }
 
   public listProposals(): ConsensusProposal<any>[] {
-    return Array.from(this.proposals.values());
+    return Array.from(this.proposals.values(), (proposal) => ({ ...proposal, independenceProof: buildIndependenceProof(Array.from(proposal.votes.values()), proposal.voters ?? proposal.eligibleVoterIds?.length ?? proposal.votes.size) }));
   }
 
   public snapshot(): SerializedProposal[] {
     return this.listProposals().map(({ votes, ...rest }) => ({
       ...structuredClone(rest),
       votes: Array.from(votes.values()).map((v) => ({ ...v })),
+      independenceProof: buildIndependenceProof(Array.from(votes.values()), rest.voters ?? rest.eligibleVoterIds?.length ?? votes.size),
     }));
   }
 
@@ -305,6 +348,7 @@ export class ConsensusEngine {
         eligibleVoterProfileIds: rest.eligibleVoterProfileIds ? Object.freeze({ ...rest.eligibleVoterProfileIds }) : undefined,
         voterWeights: rest.voterWeights ? Object.freeze({ ...rest.voterWeights }) : undefined,
         discussion: rest.discussion ?? [],
+        independenceProof: buildIndependenceProof(Array.from(voteMap.values()), rest.voters ?? rest.eligibleVoterIds?.length ?? voteMap.size),
         votes: voteMap,
       });
     }
